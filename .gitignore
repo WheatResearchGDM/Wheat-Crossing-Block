@@ -58,3 +58,9 @@ yarn-error.*
 /backups/
 *.log
 .eslintcache
+
+# Assinatura e pacotes de instalação Android
+credentials.json
+*.apk
+*.aab
+/.eas/

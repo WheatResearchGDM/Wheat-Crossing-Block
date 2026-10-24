@@ -29,6 +29,17 @@
       "expo-sharing",
       "@react-native-community/datetimepicker"
     ],
-    "scheme": "registrobc"
+    "scheme": "registrobc",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "7a854070-8f7a-4099-85ce-ef983cfa7c4d"
+      }
+    },
+    "owner": "leo_cantoni"
   }
 }
