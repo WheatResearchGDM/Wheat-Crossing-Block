@@ -39,3 +39,22 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Dados de trabalho e exportações: nunca enviar ao GitHub
+*.xls
+*.xlsx
+*.xlsm
+*.csv
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.local.json
+/src/data/buckets.json
+/dist-android/
+/.env
+/.env.*
+/coletas/
+/backups/
+*.log
+.eslintcache
