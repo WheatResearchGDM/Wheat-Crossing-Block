@@ -31,12 +31,12 @@ pnpm typecheck
 Para gerar o primeiro APK de teste, use uma conta Expo/EAS autorizada:
 
 ```powershell
-pnpm --package=eas-cli@latest dlx eas login
-pnpm --package=eas-cli@latest dlx eas build:configure
-pnpm --package=eas-cli@latest dlx eas build --platform android --profile preview
+npx eas-cli@latest login
+npx eas-cli@latest build:configure
+npx eas-cli@latest build --platform android --profile preview
 ```
 
-O perfil `preview` em `eas.json` gera APK para instalação interna e funciona sem o servidor do VS Code. Para desenvolvimento com recarga, instale `expo-dev-client` com `pnpm exec expo install expo-dev-client`, gere/instale uma build com o perfil `development` e execute `pnpm start --dev-client`. A configuração EAS, assinatura e geração do APK ainda não foram executadas neste projeto. Não há dependência do Expo Go no uso final.
+O projeto já está vinculado à conta Expo e possui assinatura Android gerenciada pelo EAS. O perfil `preview` em `eas.json` gera APK para instalação interna e funciona sem o servidor do VS Code. Para desenvolvimento com recarga, instale `expo-dev-client` com `pnpm exec expo install expo-dev-client`, gere/instale uma build com o perfil `development` e execute `pnpm start --dev-client`. Não há dependência do Expo Go no uso final. Consulte o resultado de cada compilação no painel do projeto EAS antes de baixar o APK.
 
 ## Cadastro de blocos e baldes
 
