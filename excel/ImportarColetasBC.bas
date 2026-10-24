@@ -114,9 +114,12 @@ Private Sub ReadSheet(ByVal source As Worksheet, ByVal history As Object)
 End Sub
 
 Private Sub ReadCsv(ByVal filename As String, ByVal history As Object)
-    Dim info(0 To 14) As Variant, i As Long, source As Workbook
+    Dim info(0 To 14) As Variant, i As Long, source As Workbook, opened As Workbook
     Dim failure As String
     On Error GoTo Failed
+    For Each opened In Application.Workbooks
+        If StrComp(opened.FullName, filename, vbTextCompare) = 0 Then StopImport "Feche o CSV no Excel antes de importar: " & filename
+    Next opened
     For i = 0 To 14
         info(i) = Array(i + 1, xlTextFormat)
     Next i
