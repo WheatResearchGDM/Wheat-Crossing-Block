@@ -1,0 +1,94 @@
+name: Gerar APK Android
+run-name: APK Android - ${{ inputs.source_ref }} - ${{ inputs.target }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch ou tag com o codigo do aplicativo
+        required: true
+        default: feat/coleta-offline
+        type: string
+      target:
+        description: Onde o APK sera instalado
+        required: true
+        default: celular-tablet
+        type: choice
+        options:
+          - celular-tablet
+          - emulador
+permissions:
+  contents: read
+concurrency:
+  group: apk-android-${{ inputs.source_ref }}-${{ inputs.target }}
+  cancel-in-progress: false
+jobs:
+  apk:
+    name: Compilar APK instalavel
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_VARIANT: github
+      CI: 'true'
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+      - name: Verificar codigo e testes
+        run: pnpm check
+      - name: Gerar projeto Android
+        run: pnpm exec expo prebuild --platform android --no-install
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Selecionar processadores
+        env:
+          APK_TARGET: ${{ inputs.target }}
+        run: |
+          if [ "$APK_TARGET" = "emulador" ]; then
+            echo 'ANDROID_ABIS=x86_64' >> "$GITHUB_ENV"
+          else
+            echo 'ANDROID_ABIS=arm64-v8a,armeabi-v7a' >> "$GITHUB_ENV"
+          fi
+      - name: Compilar APK independente
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures="$ANDROID_ABIS"
+      - name: Preparar arquivo para download
+        run: |
+          mkdir -p apk
+          cp android/app/build/outputs/apk/release/app-release.apk apk/RegistroBC-GitHub.apk
+      - name: Disponibilizar APK
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: RegistroBC-Android-${{ inputs.target }}
+          path: apk/RegistroBC-GitHub.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Instrucoes
+        env:
+          DOWNLOAD_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          {
+            echo '## APK de teste Android'
+            echo
+            echo "[Baixar o pacote de instalacao]($DOWNLOAD_URL)"
+            echo
+            echo 'Extraia o ZIP e instale RegistroBC-GitHub.apk no Android.'
+            echo 'Nome no aparelho: Registro de BC (GitHub).'
+            echo 'Esta variante usa assinatura de teste e armazena suas coletas separadamente da variante Expo.'
+          } >> "$GITHUB_STEP_SUMMARY"
