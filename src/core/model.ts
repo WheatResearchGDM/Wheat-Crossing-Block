@@ -38,6 +38,7 @@ export function validateDrafts(profile: Profile, bucket: string, drafts: Draft[]
   if (!selected.length) throw new Error('Informe a quantidade de pelo menos uma avaliação. Zero é válido.');
   const keys = new Set<string>();
   for (const row of selected) {
+    if (!row.date) throw new Error('Escolha a data da linha preenchida.');
     if (!validDate(row.date)) throw new Error('Data inválida. Use uma data entre 2000 e 2100.');
     if (row.purpose !== 'EMASC' && row.purpose !== 'POLI') throw new Error('Finalidade inválida.');
     if (!/^\d+$/.test(row.quantity.trim()) || Number(row.quantity) > MAX_QUANTITY)

@@ -8,7 +8,7 @@ import { displayDate, exportFilename, MAX_QUANTITY, today } from '../core/model'
 import type { Draft, OutputTarget, Profile } from '../core/model';
 import type { CatalogEntry } from '../core/catalog';
 import type { Store } from '../core/store';
-import { SaveQueue } from '../core/collection';
+import { changeSheetDate, SaveQueue } from '../core/collection';
 import { openStore } from '../services/storage';
 import { chooseOutput, exportCsv } from '../services/export';
 import { selectCatalog } from '../services/catalog-import';
@@ -134,7 +134,7 @@ export default function CollectionScreen() {
     const next = { ...current, drafts }; show(next); setNotice(''); persist(next);
   }
   function step(row: Draft, amount: number) {
-    change(row.rowId, { quantity: String(Math.max(0, Math.min(MAX_QUANTITY, (Number(row.quantity) || 0) + amount))), date: row.date || today() });
+    change(row.rowId, { quantity: String(Math.max(0, Math.min(MAX_QUANTITY, (Number(row.quantity) || 0) + amount))) });
   }
   function openPanel(next: Panel, row?: Draft) {
     setRowId(row?.rowId ?? null); setEdit(next === 'user' || next === 'bucket' ? '' : next === 'quantity' ? row?.quantity ?? '0' : row?.observation ?? ''); setPanel(next);
@@ -184,10 +184,8 @@ export default function CollectionScreen() {
   async function pickDate(id: string, date: string) {
     await run(async () => {
       await queue.current!.flush();
-      const current = contextRef.current!; const row = current.drafts.find(r => r.rowId === id); if (!row) return;
-      if (current.drafts.some(r => r.rowId !== id && r.purpose === row.purpose && r.date === date)) throw new Error('Esta data já está em outra linha da mesma finalidade.');
-      const saved = (await store.current!.all()).find(r => r.user_id === current.profile.userId && r.cycle === current.profile.cycle && r.block === current.profile.block && r.bucket === current.bucket && r.purpose === row.purpose && r.date === date);
-      const next = { ...current, drafts: current.drafts.map(r => r.rowId === id ? { ...r, date, quantity: String(saved?.quantity ?? 0), observation: saved?.observation ?? '' } : r) };
+      const current = contextRef.current!;
+      const next = { ...current, drafts: changeSheetDate(current.drafts, id, date, await store.current!.all(), current.profile, current.bucket) };
       show(next); persist(next);
     }, false);
   }
@@ -195,8 +193,7 @@ export default function CollectionScreen() {
     if (!rowId) return;
     if (panel === 'quantity') {
       if (!/^\d+$/.test(value) || Number(value) > MAX_QUANTITY) { Alert.alert('Espigas', `Use um número inteiro entre 0 e ${MAX_QUANTITY}.`); return; }
-      const row = contextRef.current?.drafts.find(r => r.rowId === rowId);
-      change(rowId, { quantity: String(Number(value)), date: row?.date || today() });
+      change(rowId, { quantity: String(Number(value)) });
     } else change(rowId, { observation: value });
     setPanel(null);
   }
@@ -295,7 +292,7 @@ export default function CollectionScreen() {
               {panel === 'quantity' && <>
                 <TextInput accessibilityLabel="Quantidade de espigas" autoFocus selectTextOnFocus style={[styles.input, styles.largeInput]} keyboardType="number-pad" maxLength={6} value={edit} onChangeText={value => {
                   setEdit(value);
-                  if (rowId) { const row = contextRef.current?.drafts.find(r => r.rowId === rowId); change(rowId, { quantity: value, date: row?.date || today() }); }
+                  if (rowId) change(rowId, { quantity: value });
                 }} onSubmitEditing={() => finishEdit(edit)} />
                 <Action disabled={busy} text="Concluir" onPress={() => finishEdit(edit)} />
               </>}

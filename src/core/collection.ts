@@ -22,6 +22,16 @@ export function sheetDates(sheet: Draft[]): DateSuggestions {
 export function collectionRows(sheet: Draft[]): Draft[] {
   return sheet.filter(r => r.date || r.observation.trim() || (r.quantity.trim() !== '' && Number(r.quantity) !== 0));
 }
+export function changeSheetDate(sheet: Draft[], id: string, date: string, records: Evaluation[], profile: Profile, bucket: string): Draft[] {
+  const row = sheet.find(r => r.rowId === id); if (!row) return sheet;
+  if (row.date === date) return sheet;
+  if (sheet.some(r => r.rowId !== id && r.purpose === row.purpose && r.date === date))
+    throw new Error('Esta data já está em outra linha da mesma finalidade.');
+  const saved = records.find(r => r.user_id === profile.userId && r.cycle === profile.cycle && r.block === profile.block && r.bucket === bucket && r.purpose === row.purpose && r.date === date);
+  return sheet.map(r => r.rowId === id ? { ...r, date,
+    quantity: saved ? String(saved.quantity) : row.date ? '0' : row.quantity,
+    observation: saved?.observation ?? (row.date ? '' : row.observation) } : r);
+}
 
 // Every keystroke has its own immutable snapshot. Writes never race across buckets/users.
 // Failures remain observable by flush; the next snapshot can recover a transient failure.
