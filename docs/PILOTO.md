@@ -11,4 +11,4 @@
 - Exportar de um segundo aparelho e conferir nome distinto.
 - Aplicar o roteiro da integração Excel em uma cópia de teste.
 
-O APK, o teste visual no aparelho e o teste da macro são entregas ainda pendentes de validação. O bundle Android e os testes automatizados do núcleo podem ser executados sem aparelho.
+O APK foi gerado tanto no Expo quanto no GitHub Actions; a primeira execução do Actions concluiu com sucesso. O teste visual e funcional no aparelho e o teste da macro continuam pendentes. O bundle Android e os testes automatizados do núcleo podem ser executados sem aparelho.

@@ -2,6 +2,8 @@
 
 O workflow **Gerar APK Android** compila no próprio GitHub. Não exige conta/token Expo nem chave de produção nos Secrets. Ele produz uma variante independente para teste chamada **Registro de BC (GitHub)**.
 
+Primeira execução concluída com sucesso: [ver execução](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40144356972). [Baixar o artefato com o APK](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40144356972/artifacts/12580640662). O pacote gerado foi conferido: integridade do ZIP, estrutura do APK, bloco de assinatura, JavaScript embarcado e bibliotecas ARM de 32/64 bits. A instalação e o teste de campo no aparelho continuam no roteiro do piloto.
+
 ## Executar
 
 1. Abra a aba Actions do repositório.
