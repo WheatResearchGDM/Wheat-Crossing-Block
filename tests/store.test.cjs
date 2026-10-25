@@ -6,7 +6,7 @@ const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { Store } = require(join(process.env.BC_TEST_BUILD, 'store.js'));
-const { validateDrafts, toCsv, validDate, today, exportFilename } = require(join(process.env.BC_TEST_BUILD, 'model.js'));
+const { validateDrafts, toCsv, validDate, today, exportFilename, snapshotForDevice } = require(join(process.env.BC_TEST_BUILD, 'model.js'));
 
 class Adapter {
   constructor(filename = ':memory:') { this.raw = new DatabaseSync(filename); }
@@ -70,8 +70,10 @@ test('exportação acumulada preserva unicode, delimitadores, aspas e novas linh
   const csv = toCsv(await store.all());
   assert.ok(csv.startsWith('\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID'));
   assert.ok(csv.includes('"Observação; ""revisar""\namanhã"')); assert.ok(csv.includes('"24/10/2026";"Emasculação";"12"'));
-  assert.equal(exportFilename(profile), 'REGISTRO_BC_COLETOR DE TESTE.csv');
-  assert.equal(exportFilename({ ...profile, userName: 'João / Sul' }), 'REGISTRO_BC_JOÃO _ SUL.csv'); db.raw.close();
+  assert.ok(csv.includes('Device ID;Nome do usuário'));
+  assert.equal(exportFilename(profile), 'REGISTRO_BC_aparelho-1.csv');
+  assert.equal(exportFilename({ ...profile, userName: 'Outro usuário' }), exportFilename(profile));
+  assert.notEqual(exportFilename({ ...profile, deviceId: 'aparelho-2' }), exportFilename(profile)); db.raw.close();
 });
 
 test('último catálogo substitui navegação sem apagar coletas e preserva vínculo legado', async () => {
@@ -120,19 +122,113 @@ test('seis linhas, datas sugeridas e zero somente nos baldes visitados', async (
   assert.ok((await store.all()).every(r => r.bucket === '1')); db.raw.close();
 });
 
-test('troca de usuário mantém identidades, rascunhos e destinos separados', async () => {
+test('troca de usuário mantém identidades e histórico, mas limpa a rodada e reutiliza o destino do aparelho', async () => {
   const { db, store } = await make(); await store.setProfile(profile);
-  const sheet = await store.loadSheet(profile, '1'); sheet[0].quantity = '19';
+  const sheet = await store.loadSheet(profile, '1'); sheet[0].date = '2026-10-24'; sheet[0].quantity = '19';
   await store.saveSheet(profile, '1', sheet, ['1']);
   const other = await store.selectUser('Outro coletor');
   assert.notEqual(other.userId, profile.userId); assert.equal(other.deviceId, profile.deviceId);
   const fresh = await store.loadSheet(other, '1'); assert.equal(fresh[0].quantity, '0');
   await store.saveSheet(other, '1', fresh, ['1']);
   const restored = await store.selectUser('coletor de teste'); assert.equal(restored.userId, profile.userId);
-  assert.equal((await store.loadSheet(restored, '1'))[0].quantity, '19');
+  const cleared = await store.loadSheet(restored, '1');
+  assert.ok(cleared.every(r => r.date === '' && r.quantity === '0' && r.observation === ''));
+  assert.equal((await store.all()).find(r => r.user_id === profile.userId).quantity, 19);
   assert.equal((await store.users()).length, 2);
-  await store.setSetting('output:' + other.userId, { kind: 'file', uri: 'content://test/outro' });
-  assert.equal(await store.setting('output:' + restored.userId, null), null); db.raw.close();
+  await store.setSetting('outputDevice', { kind: 'folder', uri: 'content://test/pasta' });
+  await store.selectUser(other.userName);
+  assert.equal((await store.setting('outputDevice', null)).uri, 'content://test/pasta'); db.raw.close();
+});
+
+test('CSV do aparelho inclui todos os usuários e exclui outro aparelho', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  await store.save(profile, '1', [draft()], ['1']);
+  const other = await store.selectUser('Maria');
+  const sheet = await store.loadSheet(other, '1'); sheet[0].date = '2026-10-24'; sheet[0].quantity = '6';
+  await store.saveSheet(other, '1', sheet, ['1']);
+  const rows = await store.all();
+  const snapshot = snapshotForDevice(profile, [...rows, { ...rows[0], device_id: 'aparelho-2', user_name: 'Outro aparelho' }]);
+  assert.equal(snapshot.records.length, 2); assert.ok(snapshot.csv.includes('"Maria"')); assert.ok(snapshot.csv.includes('"Coletor de teste"'));
+  assert.ok(!snapshot.csv.includes('Outro aparelho')); assert.equal(snapshot.filename, exportFilename(other)); db.raw.close();
+});
+
+test('exportação concluída limpa datas e campos de todos os baldes sem modificar o histórico', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  const sheet = await store.loadSheet(profile, '1'); sheet[0].date = '2026-10-24'; sheet[0].quantity = '18'; sheet[0].observation = 'PASSADA';
+  await store.saveSheet(profile, '1', sheet, ['1', '2']);
+  const second = await store.loadSheet(profile, '2'); second[0].quantity = '3'; await store.saveSheet(profile, '2', second, ['1', '2']);
+  const exported = await store.all(); await store.completeExport(exported);
+  for (const bucket of ['1', '2']) {
+    const fresh = await store.loadSheet(profile, bucket);
+    assert.ok(fresh.every(r => r.date === '' && r.quantity === '0' && r.observation === ''));
+    await store.saveSheet(profile, bucket, fresh, ['1', '2']);
+  }
+  assert.deepEqual(await store.all(), exported);
+  await assert.rejects(store.saveSheet(profile, '1', sheet, ['1', '2']), /rodada/); db.raw.close();
+});
+
+test('nova rodada na mesma data guarda nova avaliação sem substituir a anterior; reexportar não duplica', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  const first = await store.loadSheet(profile, '1'); first[0].date = '2026-10-24'; first[0].quantity = '14';
+  await store.saveSheet(profile, '1', first, ['1']); await store.completeExport(await store.all());
+  const second = await store.loadSheet(profile, '1');
+  const { changeSheetDate } = require(join(process.env.BC_TEST_BUILD, 'collection.js'));
+  const dated = changeSheetDate(second, second[0].rowId, '2026-10-24', await store.all(), profile, '1');
+  assert.equal(dated[0].quantity, '0'); dated[0].quantity = '2';
+  await store.saveSheet(profile, '1', dated, ['1']);
+  assert.deepEqual((await store.all()).map(r => r.quantity).sort((a,b) => a-b), [2,14]);
+  const snapshot = await store.all(); await store.completeExport(snapshot); await store.completeExport(snapshot);
+  assert.deepEqual(await store.all(), snapshot); db.raw.close();
+});
+
+test('rodada limpa persiste após reabrir o banco e exportação antiga não apaga mudanças novas', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bc-reset-'));
+  try {
+    const filename = join(directory, 'bc.db'); const first = await make(new Adapter(filename)); await first.store.setProfile(profile);
+    const sheet = await first.store.loadSheet(profile, '1'); sheet[0].date = '2026-10-24'; sheet[0].quantity = '11';
+    await first.store.saveSheet(profile, '1', sheet, ['1']); const old = await first.store.all();
+    sheet[0].quantity = '12'; await first.store.saveSheet(profile, '1', sheet, ['1']);
+    await assert.rejects(first.store.completeExport(old), /alterações posteriores/);
+    assert.equal((await first.store.loadSheet(profile, '1'))[0].quantity, '12');
+    await first.store.completeExport(await first.store.all()); first.db.raw.close();
+    const second = await make(new Adapter(filename));
+    assert.ok((await second.store.loadSheet(profile, '1')).every(r => r.date === '' && r.quantity === '0' && r.observation === ''));
+    assert.equal((await second.store.all())[0].quantity, 12); second.db.raw.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('excluir usuário ativo remove identificação e lista, preserva dispositivo e coletas no CSV', async () => {
+  const { db, store } = await make(); await store.setProfile(profile); await store.save(profile, '1', [draft()], ['1']);
+  const next = await store.deleteUser(profile.userId);
+  assert.equal(next.userName, ''); assert.notEqual(next.userId, profile.userId); assert.equal(next.deviceId, profile.deviceId);
+  assert.equal((await store.users()).length, 0); assert.equal((await store.all()).length, 1);
+  assert.ok(snapshotForDevice(next, await store.all()).csv.includes('Coletor de teste'));
+  const recreated = await store.selectUser(profile.userName);
+  assert.notEqual(recreated.userId, profile.userId); assert.ok((await store.loadSheet(recreated, '1')).every(r => r.date === ''));
+  db.raw.close();
+});
+
+test('excluir outro usuário não troca usuário ativo nem apaga suas avaliações', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  const other = await store.selectUser('Maria'); await store.save(other, '1', [draft()], ['1']);
+  await store.selectUser(profile.userName);
+  const next = await store.deleteUser(other.userId);
+  assert.equal(next.userId, profile.userId); assert.deepEqual((await store.users()).map(u => u.userId), [profile.userId]);
+  assert.equal((await store.all())[0].user_name, 'Maria'); db.raw.close();
+});
+
+test('falha de gravação externa preserva formulário, histórico e estado de exportação', async () => {
+  const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
+  const { db, store } = await make(); await store.setProfile(profile);
+  const sheet = await store.loadSheet(profile, '1'); sheet[0].date = '2026-10-24'; sheet[0].quantity = '16'; sheet[0].observation = 'VEGETATIVO';
+  await store.saveSheet(profile, '1', sheet, ['1']); const before = await store.all();
+  await assert.rejects(exportDevice(store, profile, async () => { throw new Error('Destino sem acesso'); }), /Destino sem acesso/);
+  assert.deepEqual(await store.loadSheet(profile, '1'), sheet); assert.deepEqual(await store.all(), before);
+  assert.equal((await store.exportState(before)).pending, 1);
+  const written = []; await exportDevice(store, profile, async rows => { written.push(...rows); });
+  assert.deepEqual(written, before); assert.equal((await store.exportState(before)).pending, 0);
+  assert.ok((await store.loadSheet(profile, '1')).every(r => r.date === '' && r.quantity === '0' && r.observation === ''));
+  db.raw.close();
 });
 
 test('CSV mantém histórico de datas e protege textos interpretáveis como fórmulas', async () => {

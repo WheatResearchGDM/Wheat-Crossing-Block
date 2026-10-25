@@ -30,6 +30,7 @@ class BCDocumentsModule : Module() {
         "create" -> Intent.ACTION_CREATE_DOCUMENT
         else -> Intent.ACTION_OPEN_DOCUMENT
       }).apply {
+        putExtra(Intent.EXTRA_LOCAL_ONLY, false)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         if (kind != "folder") {
           addCategory(Intent.CATEGORY_OPENABLE)
@@ -70,7 +71,7 @@ class BCDocumentsModule : Module() {
       } else {
         DocumentFile.fromSingleUri(context, uri) ?: throw IOException("Selecione o CSV novamente.")
       }
-      if (file.name != filename) throw IOException("Escolha o arquivo $filename para este usuário.")
+      if (file.name != filename) throw IOException("Escolha o arquivo $filename para este aparelho.")
       val bytes = content.toByteArray(Charsets.UTF_8)
       (context.contentResolver.openOutputStream(file.uri, "wt") ?: throw IOException("Não foi possível abrir o CSV para escrita.")).use { it.write(bytes); it.flush() }
       // Provider success does not mean OneDrive has finished cloud synchronization.

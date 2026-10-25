@@ -1,6 +1,6 @@
 # Instalar a versão de teste no Android
 
-## Versão 0.2 pelo GitHub
+## Versão 0.3 pelo GitHub
 
 Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK Android**. Baixe **RegistroBC-Android-celular-tablet**, extraia o ZIP e abra `RegistroBC-GitHub.apk`. O nome no celular é **Registro de BC (GitHub)**, agora com uma espiga dourada no ícone. Instale como atualização da variante GitHub que já está no aparelho; não desinstale nem limpe os dados.
 
@@ -9,8 +9,10 @@ Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK A
 3. Escolha o BC pelo nome no topo e navegue pelos baldes.
 4. Escolha até três datas para cada finalidade e ajuste as quantidades com `↓ número ↑`. Tocar no número permite digitá-lo; a observação oferece opções e texto livre.
 5. As alterações ficam gravadas no aparelho automaticamente; confira o indicador no rodapé. Datas são sugeridas para os próximos baldes e as quantidades começam em zero.
-6. Escolha a pasta de saída em Configurações. Se o OneDrive não oferecer pasta, use **Salvar como / OneDrive** ou **Escolher CSV existente**.
-7. Toque no ícone de exportação para atualizar `REGISTRO_BC_[NOME DO USUÁRIO].csv` no mesmo destino.
+6. Escolha a pasta de saída em Configurações, ou use **Criar arquivo de saída** / **Escolher CSV existente**. O destino é compartilhado pelos usuários do aparelho.
+7. Exporte para atualizar `REGISTRO_BC_[ID_DO_APARELHO].csv`, com todos os usuários. A gravação confirmada limpa datas, espigas e observações, preservando o histórico.
+8. Trocar de usuário inicia outra rodada em branco. A lixeira no pop-up exclui o nome da lista, com confirmação, preservando as coletas. Excluir o usuário ativo exige nova identificação.
+9. Se o OneDrive não aparecer no seletor, use **Enviar cópia (OneDrive…)** e confirme o envio no próprio OneDrive, se disponível. Compartilhar não confirma recebimento e não limpa a tela. É possível exportar para uma pasta local antes de enviar a cópia.
 
 A atualização preserva o banco quando Android reconhece o mesmo pacote e assinatura. Se o Android informar incompatibilidade de assinatura, mantenha o app antigo instalado e exporte/confira seus dados antes de qualquer reinstalação. O teste de escrita e sincronização com o OneDrive da organização deve ser feito no aparelho.
 

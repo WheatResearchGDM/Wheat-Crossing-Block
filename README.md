@@ -1,9 +1,9 @@
 # Wheat-Crossing-Block
 Aplicativo para coleta de espigas disponíveis no BC.
 
-Versão Android 0.2.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
+Versão Android 0.3.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
 
-[Baixar o APK 0.2.0 pelo GitHub](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40150872590/artifacts/12582304034). Extraia o ZIP e instale `RegistroBC-GitHub.apk` como atualização de **Registro de BC (GitHub)**. [Instruções](docs/INSTALAR_ANDROID.md).
+Abra a execução bem-sucedida mais recente de [Gerar APK Android](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/workflows/android-apk.yml), baixe o artefato e extraia o ZIP. Instale `RegistroBC-GitHub.apk` como atualização de **Registro de BC (GitHub)**. [Instruções](docs/INSTALAR_ANDROID.md).
 
 ## Fluxo implementado
 
@@ -13,8 +13,9 @@ Versão Android 0.2.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. 
 4. Preencher até três datas por finalidade, na mesma tela, com contador `↓ número ↑`.
 5. As alterações são gravadas automaticamente no aparelho, inclusive sem internet.
 6. Tocar no ícone de exportação para atualizar o CSV no destino escolhido.
+7. Após gravação confirmada, iniciar nova rodada com datas em branco, espigas zero e observações vazias.
 
-O armazenamento principal do aparelho é SQLite. Cada usuário tem seu CSV acumulado `REGISTRO_BC_[NOME DO USUÁRIO].csv`. A pasta ou arquivo selecionado é lembrado após reiniciar. A exportação reescreve o snapshot completo desse usuário/aparelho, sem apagar o banco. O OneDrive sincroniza conforme suas próprias permissões e conexão; sucesso de escrita no provedor não confirma chegada à nuvem ou ao Excel. Não há servidor de sincronização entre aparelhos. Use nomes diferentes para coletores diferentes; o mesmo usuário em dois aparelhos não deve apontar ambos ao mesmo CSV, pois um snapshot substituiria o outro.
+O armazenamento principal do aparelho é SQLite. Cada aparelho tem um CSV acumulado `REGISTRO_BC_[ID_DO_APARELHO].csv`, com todos os seus usuários identificados na coluna `Nome do usuário`. O destino é lembrado para todos os usuários após reiniciar. A exportação reescreve o snapshot completo do aparelho, sem apagar o banco. Aparelhos diferentes geram arquivos diferentes, inclusive quando o coletor é o mesmo. Sucesso de escrita no provedor não confirma sincronização à nuvem ou importação pelo Excel. Não há servidor de sincronização entre aparelhos.
 
 ## Executar no VS Code
 
@@ -63,21 +64,23 @@ O cadastro funciona offline após a importação. Para alterá-lo, importe o arq
 
 ## Regras da coleta
 
-Uma avaliação por coletor, bloco, balde, data e finalidade (a safra legada permanece apenas internamente). Repetir o salvamento sem mudar os dados não cria cópia. Corrigir quantidade ou observação conserva o identificador e incrementa a versão; o banco mantém as revisões. A quantidade aceita inteiros de zero a 100.000 e começa em zero. Baldes ainda não visitados não geram registros. Linhas sem data e com zero/sem observação não são exportadas.
+Uma avaliação por rodada, coletor, bloco, balde, data e finalidade (a safra legada permanece apenas internamente). Repetir o salvamento sem mudar os dados na mesma rodada não cria cópia. Corrigir quantidade ou observação conserva o identificador e incrementa a versão; o banco mantém as revisões. Recolher na mesma data após iniciar outra rodada gera uma nova avaliação, preservando a anterior. Quantidades vão de zero a 100.000. Linhas sem data e com zero/sem observação não são exportadas.
 
-As datas escolhidas são sugeridas nos próximos baldes. Trocar a data de uma linha abre a avaliação dessa data, se já existir, ou começa em zero. Avaliações das datas anteriores permanecem no histórico interno e no CSV. A tela mostra até três datas de cada finalidade; escolher uma data antiga permite reabri-la. Não há exclusão de avaliações nesta versão. Coletores podem alternar no mesmo aparelho; seus dados e destinos de arquivo ficam separados.
+As datas são sugeridas nos próximos baldes durante a mesma rodada. Exportar com sucesso ou trocar de usuário limpa as seis linhas: datas em branco, espigas zero e observações vazias. Essa limpeza vale para os baldes da nova rodada e persiste após reiniciar. Selecionar uma data pode reabrir uma avaliação da rodada atual; contagens de rodadas anteriores não preenchem a tela. O histórico permanece no banco e no CSV. Não há exclusão de avaliações. A lixeira no pop-up de usuários exclui apenas o nome da lista, com confirmação, preservando suas coletas. Excluir o usuário ativo exige nova identificação.
 
 Cada alteração é enfileirada para gravação local em uma transação. Rascunhos incompletos também são persistidos e recuperados; campos inválidos impedem avançar/exportar até correção. A navegação aguarda a fila de gravação. O rodapé informa gravação ou falha; não há botão de salvar nem histórico. Como em qualquer aplicativo, encerrar à força durante uma escrita ou perder o aparelho pode impedir recuperar o último evento ainda em andamento. Não desinstale nem limpe os dados sem exportar e conferir a cópia no computador.
 
 ## CSV e destino de saída
 
-Colunas: `Nome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID`. UTF-8 com BOM, separador ponto e vírgula, datas de avaliação `DD/MM/AAAA`, criação ISO 8601 UTC e finalidade por extenso. Textos que poderiam ser executados como fórmulas no Excel recebem um apóstrofo de proteção.
+Colunas: `Nome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID;Nome do usuário`. UTF-8 com BOM, separador ponto e vírgula, datas de avaliação `DD/MM/AAAA`, criação ISO 8601 UTC e finalidade por extenso. Textos que poderiam ser executados como fórmulas no Excel recebem um apóstrofo de proteção.
 
-Em Configurações, escolha a pasta. Se o provedor (por exemplo OneDrive) não permitir selecionar pastas, use **Salvar como / OneDrive** uma única vez para criar o arquivo ou **Escolher CSV existente** para reutilizar um arquivo com o nome esperado. O acesso persistente concedido pelo Android é lembrado. Revogação, mudança do arquivo, indisponibilidade do provedor ou falta de conexão podem exigir nova escolha. A cópia local e o banco são preservados se a exportação falhar. O provedor precisa estar instalado, autenticado e oferecer escrita pelo seletor de documentos Android.
+Em Configurações, escolha a pasta, ou use **Criar arquivo de saída** / **Escolher CSV existente** com o nome esperado para este aparelho. A permissão persistente é lembrada. Uma pasta escolhida na versão anterior pode ser reutilizada; arquivos por usuário exigem escolher o novo arquivo por aparelho. Os arquivos antigos não são apagados. Uma falha na escrita ou leitura de confirmação mantém os dados e o formulário.
+
+O seletor Android depende dos provedores disponíveis e não representa integração direta com a conta Microsoft. Se o OneDrive não aparecer, use **Enviar cópia (OneDrive…)**, escolha o OneDrive entre os aplicativos disponíveis e confirme o envio nele. Compartilhar não confirma recebimento, não limpa campos e não marca registros como exportados. Você pode exportar para uma pasta local primeiro (gravação confirmada, tela limpa) e depois enviar uma cópia. A pasta escolhida dentro do OneDrive nesse caminho é controlada pelo próprio OneDrive e não pode ser lembrada pelo app de coleta.
 
 ## Excel
 
-O novo CSV tem oito colunas. O módulo inicial [excel/ImportarColetasBC.bas](excel/ImportarColetasBC.bas) foi criado para o CSV técnico de 15 colunas da versão 0.1 e **ainda não importa o novo formato**. A adaptação da macro é uma etapa seguinte; consulte [docs/EXCEL.md](docs/EXCEL.md). O arquivo original não foi modificado.
+O novo CSV tem nove colunas. O módulo inicial [excel/ImportarColetasBC.bas](excel/ImportarColetasBC.bas) foi criado para o CSV técnico de 15 colunas da versão 0.1 e **ainda não importa o novo formato**. A macro deverá verificar conflitos entre aparelhos, usuários e rodadas por bloco, balde, data e finalidade. Consulte [docs/EXCEL.md](docs/EXCEL.md). O arquivo original não foi modificado.
 
 ## Verificação
 

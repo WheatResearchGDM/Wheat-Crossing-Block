@@ -1,17 +1,16 @@
-import { today } from './model';
 import type { Draft, Evaluation, Profile, Purpose } from './model';
 
 export type DateSuggestions = Record<Purpose, string[]>;
-export const defaultDates = (): DateSuggestions => ({ EMASC: [today(), '', ''], POLI: [today(), '', ''] });
-export function createSheet(profile: Profile, bucket: string, records: Evaluation[], dates: DateSuggestions, uuid: () => string): Draft[] {
+export const defaultDates = (): DateSuggestions => ({ EMASC: ['', '', ''], POLI: ['', '', ''] });
+export function createSheet(profile: Profile, bucket: string, records: Evaluation[], dates: DateSuggestions, uuid: () => string, roundId = ''): Draft[] {
   const sheet: Draft[] = [];
   for (const purpose of ['EMASC', 'POLI'] as const) {
-    const saved = records.filter(r => r.user_id === profile.userId && r.block === profile.block && r.cycle === profile.cycle && r.bucket === bucket && r.purpose === purpose)
+    const saved = records.filter(r => r.user_id === profile.userId && r.block === profile.block && r.cycle === profile.cycle && r.bucket === bucket && r.purpose === purpose && (r.round_id ?? '') === roundId)
       .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3).sort((a, b) => a.date.localeCompare(b.date));
     const selectedDates = saved.length ? [...saved.map(r => r.date), ...Array(3 - saved.length).fill('')] : dates[purpose];
     for (let i = 0; i < 3; i++) {
       const record = saved.find(r => r.date === selectedDates[i]);
-      sheet.push({ rowId: uuid(), purpose, date: selectedDates[i] ?? '', quantity: String(record?.quantity ?? 0), observation: record?.observation ?? '' });
+      sheet.push({ rowId: uuid(), purpose, date: selectedDates[i] ?? '', quantity: String(record?.quantity ?? 0), observation: record?.observation ?? '', roundId });
     }
   }
   return sheet;
@@ -27,7 +26,7 @@ export function changeSheetDate(sheet: Draft[], id: string, date: string, record
   if (row.date === date) return sheet;
   if (sheet.some(r => r.rowId !== id && r.purpose === row.purpose && r.date === date))
     throw new Error('Esta data já está em outra linha da mesma finalidade.');
-  const saved = records.find(r => r.user_id === profile.userId && r.cycle === profile.cycle && r.block === profile.block && r.bucket === bucket && r.purpose === row.purpose && r.date === date);
+  const saved = records.find(r => r.user_id === profile.userId && r.cycle === profile.cycle && r.block === profile.block && r.bucket === bucket && r.purpose === row.purpose && r.date === date && (r.round_id ?? '') === (row.roundId ?? ''));
   return sheet.map(r => r.rowId === id ? { ...r, date,
     quantity: saved ? String(saved.quantity) : row.date ? '0' : row.quantity,
     observation: saved?.observation ?? (row.date ? '' : row.observation) } : r);

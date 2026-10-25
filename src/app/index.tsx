@@ -9,8 +9,9 @@ import type { Draft, OutputTarget, Profile } from '../core/model';
 import type { CatalogEntry } from '../core/catalog';
 import type { Store } from '../core/store';
 import { changeSheetDate, SaveQueue } from '../core/collection';
+import { exportDevice } from '../core/export-flow';
 import { openStore } from '../services/storage';
-import { chooseOutput, exportCsv } from '../services/export';
+import { chooseOutput, exportCsv, shareCsv } from '../services/export';
 import { selectCatalog } from '../services/catalog-import';
 
 const colors = { ink: '#123047', muted: '#597080', line: '#D6E0E5', field: '#F4F7F8', paper: '#FFFFFF', green: '#35624C', red: '#AA3030' };
@@ -70,8 +71,8 @@ export default function CollectionScreen() {
     const drafts = bucket ? await store.current!.loadSheet(nextProfile, bucket) : [];
     validationRef.current = null; setValidation('');
     show({ profile: nextProfile, catalog, bucket, drafts });
-    const perUser = await store.current!.setting<OutputTarget | null>('output:' + nextProfile.userId, null);
-    setTarget(perUser ?? await store.current!.setting<OutputTarget | null>('outputFolder', null));
+    setTarget(await store.current!.setting<OutputTarget | null>('outputDevice', null)
+      ?? await store.current!.setting<OutputTarget | null>('outputFolder', null));
   }, [show]);
 
   useEffect(() => {
@@ -108,7 +109,8 @@ export default function CollectionScreen() {
   useEffect(() => { flushRef.current = flush; });
   useEffect(() => {
     const app = AppState.addEventListener('change', state => {
-      if (state !== 'active') void flushRef.current().catch(() => {});
+      // Actions flush first and disable editing. Do not enqueue an old context during reset.
+      if (state !== 'active' && !busyRef.current) void flushRef.current().catch(() => {});
     });
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
       if (busyRef.current) return true;
@@ -151,6 +153,17 @@ export default function CollectionScreen() {
       const current = contextRef.current!; await reload(current.profile, current.catalog, bucket); setPanel(null);
     });
   }
+  function deleteUser(user: User) {
+    Alert.alert('Excluir usuário?', `${user.userName} será removido da lista. As coletas anteriores continuarão no aparelho e no CSV.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Excluir', style: 'destructive', onPress: () => void run(async () => {
+        const current = contextRef.current!;
+        const profile = await store.current!.deleteUser(user.userId);
+        await reload(profile, current.catalog, current.bucket);
+        setUsers(await store.current!.users()); setEdit(''); setPanel('user');
+      }) },
+    ]);
+  }
   async function importCatalog() {
     await run(async () => {
       const result = await selectCatalog(); if (!result) return;
@@ -164,7 +177,7 @@ export default function CollectionScreen() {
       const profile = contextRef.current!.profile;
       if (!profile.userName) throw new Error('Escolha o usuário no ícone superior esquerdo.');
       const selected = await chooseOutput(profile, kind); if (!selected) return;
-      await store.current!.setSetting('output:' + profile.userId, selected);
+      await store.current!.setSetting('outputDevice', selected);
       if (selected.kind === 'folder') await store.current!.setSetting('outputFolder', selected);
       setTarget(selected);
     });
@@ -174,11 +187,17 @@ export default function CollectionScreen() {
       const current = contextRef.current!;
       if (!current.profile.userName) { openPanel('user'); return; }
       if (!target) { setPanel('settings'); Alert.alert('Destino do CSV', 'Escolha a pasta ou o arquivo de saída. Depois toque no ícone de exportação.'); return; }
-      const records = (await store.current!.all()).filter(r => r.user_id === current.profile.userId && r.device_id === current.profile.deviceId);
-      await exportCsv(current.profile, records, target);
-      await store.current!.markExport(records);
-      setNotice('CSV atualizado');
-      Alert.alert('CSV atualizado', `${exportFilename(current.profile)}\n${records.length} registros.\n\nSe o destino for OneDrive, confira a sincronização no OneDrive.`);
+      const records = await exportDevice(store.current!, current.profile, records => exportCsv(current.profile, records, target));
+      await reload(current.profile, current.catalog, current.bucket);
+      setNotice('CSV atualizado · nova coleta');
+      Alert.alert('CSV atualizado', `${exportFilename(current.profile)}\n${records.length} registros de todos os usuários deste aparelho.\n\nFormulário limpo. O histórico foi preservado. Se o destino for OneDrive, confira a sincronização no OneDrive.`);
+    });
+  }
+  async function sendCopy() {
+    await run(async () => {
+      const current = contextRef.current!;
+      await shareCsv(current.profile, await store.current!.all());
+      setNotice('Confira o envio no aplicativo escolhido');
     });
   }
   async function pickDate(id: string, date: string) {
@@ -263,7 +282,10 @@ export default function CollectionScreen() {
             <View style={styles.modalHeader}><Text style={styles.modalTitle}>{title}</Text><IconButton icon="x" label="Fechar" disabled={busy || (panel === 'user' && !profile.userName)} onPress={() => setPanel(null)} /></View>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
               {panel === 'user' && <>
-                {users.map(u => <Action key={u.userId} disabled={busy} text={`${u.userName}${u.userId === profile.userId ? ' ✓' : ''}`} onPress={() => void selectUser(u.userName)} />)}
+                {users.map(u => <View key={u.userId} style={styles.userRow}>
+                  <View style={{ flex: 1 }}><Action disabled={busy} text={`${u.userName}${u.userId === profile.userId ? ' ✓' : ''}`} onPress={() => void selectUser(u.userName)} /></View>
+                  <IconButton icon="trash-2" label={`Excluir usuário ${u.userName}`} disabled={busy} onPress={() => deleteUser(u)} />
+                </View>)}
                 <Text style={styles.hint}>Identificação pelo nome</Text>
                 <TextInput accessibilityLabel="Nome do usuário" editable={!busy} style={styles.input} value={edit} onChangeText={setEdit} placeholder="Nome do usuário" maxLength={80} autoCapitalize="words" />
                 <Action disabled={busy || !edit.trim()} text="Usar este nome" onPress={() => void selectUser(edit)} />
@@ -271,13 +293,15 @@ export default function CollectionScreen() {
               {panel === 'settings' && <>
                 <Text style={styles.label}>Cadastro: Nome do Bloco · Balde</Text><Text style={styles.hint}>{source}</Text>
                 <Action disabled={busy} text="Importar CSV ou Excel" onPress={() => void importCatalog()} />
-                <Text style={styles.label}>Saída de {profile.userName || 'usuário'}</Text>
+                <Text style={styles.label}>CSV único deste aparelho · todos os usuários</Text>
                 <Text style={styles.hint}>{target ? `${target.kind === 'folder' ? 'Pasta' : 'Arquivo'}: ${target.name}` : 'Destino não selecionado'}</Text>
                 {!!profile.userName && <Text style={styles.filename}>{exportFilename(profile)}</Text>}
                 <Action disabled={busy} text="Escolher pasta de saída" onPress={() => void selectOutput('folder')} />
-                <Action disabled={busy} text="Salvar como / OneDrive" onPress={() => void selectOutput('create')} />
+                <Action disabled={busy} text="Criar arquivo de saída" onPress={() => void selectOutput('create')} />
                 <Action disabled={busy} text="Escolher CSV existente" onPress={() => void selectOutput('open')} />
-                <Text style={styles.hint}>O destino será lembrado. Se o provedor não oferecer pastas, escolha o arquivo CSV.</Text>
+                <Text style={styles.hint}>O destino será lembrado para todos os usuários. A gravação confirmada limpa as datas, quantidades e observações da tela.</Text>
+                <Action disabled={busy} text="Enviar cópia (OneDrive…)" onPress={() => void sendCopy()} />
+                <Text style={styles.hint}>OneDrive não aparece no seletor? Use Enviar cópia e escolha OneDrive entre os aplicativos disponíveis. Confirme o envio nele. Compartilhar não limpa o formulário, pois o app não consegue confirmar a transferência.</Text>
               </>}
               {panel === 'block' && <>
                 {!blocks.length && <Action text="Importar cadastro" onPress={() => setPanel('settings')} />}
@@ -344,4 +368,5 @@ const styles = StyleSheet.create({
   input: { minHeight: 48, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.ink, fontSize: 16 },
   multiline: { minHeight: 100, textAlignVertical: 'top' }, largeInput: { fontSize: 30, textAlign: 'center' },
   bucketGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  userRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 });

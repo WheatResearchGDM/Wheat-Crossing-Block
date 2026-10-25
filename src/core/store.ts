@@ -1,4 +1,4 @@
-import { exportFilename, logicalKey, validateDrafts } from './model';
+import { logicalKey, validateDrafts } from './model';
 import type { Draft, Evaluation, Profile } from './model';
 import { catalogKey, validateCatalogEntry } from './catalog';
 import type { CatalogEntry } from './catalog';
@@ -65,12 +65,11 @@ export class Store {
     const previous = await this.getProfile(); const users = await this.users();
     const found = users.find(u => u.userName.toLocaleLowerCase('pt-BR') === trimmed.toLocaleLowerCase('pt-BR'));
     const next = { ...previous, userName: found?.userName ?? trimmed, userId: found?.userId ?? (previous.userName ? this.uuid() : previous.userId) };
-    if (users.some(u => u.userId !== next.userId && exportFilename({ ...next, userName: u.userName }) === exportFilename(next)))
-      throw new Error('Este nome produz o mesmo arquivo de outro usuário. Use um nome diferente.');
     if (!found) users.push({ userId: next.userId, userName: next.userName });
     await this.db.withExclusiveTransactionAsync(async tx => {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'users', JSON.stringify(users));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'profile', JSON.stringify(next));
+      if (previous.userId !== next.userId || !previous.userName) await this.resetRound(tx, next.userId);
     });
     return next;
   }
@@ -83,6 +82,17 @@ export class Store {
       return parsed.map((bucket: string) => ({ cycle: profile.cycle, block: profile.block, bucket }));
     }
     return parsed;
+  }
+  async deleteUser(userId: string): Promise<Profile> {
+    const previous = await this.getProfile();
+    const users = (await this.users()).filter(u => u.userId !== userId);
+    const next = previous.userId === userId ? { ...previous, userId: this.uuid(), userName: '' } : previous;
+    await this.db.withExclusiveTransactionAsync(async tx => {
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'users', JSON.stringify(users));
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'profile', JSON.stringify(next));
+      await this.resetRound(tx, userId);
+    });
+    return next;
   }
   async mergeCatalog(entries: CatalogEntry[]): Promise<CatalogEntry[]> {
     for (const entry of entries) validateCatalogEntry(entry);
@@ -121,7 +131,9 @@ export class Store {
     let changed = 0;
       for (const draft of selected) {
         const base = { cycle: profile.cycle, block: profile.block, bucket, date: draft.date, purpose: draft.purpose };
-        const key = JSON.stringify([profile.userId, ...JSON.parse(logicalKey(base))]);
+        const round = draft.roundId ?? '';
+        // Empty round preserves legacy natural keys and record IDs during upgrades.
+        const key = JSON.stringify([profile.userId, ...JSON.parse(logicalKey(base)), ...(round ? [round] : [])]);
         const existing = await tx.getFirstAsync<Payload>('SELECT payload FROM evaluations WHERE natural_key = ?', key);
         const previous: Evaluation | null = existing ? JSON.parse(existing.payload) : null;
         const quantity = Number(draft.quantity.trim());
@@ -130,7 +142,7 @@ export class Store {
         const now = this.clock();
         const record: Evaluation = { ...base, schema_version: '1', record_id: previous?.record_id ?? this.uuid(),
           version: (previous?.version ?? 0) + 1, quantity, observation, user_id: profile.userId,
-          user_name: profile.userName, device_id: profile.deviceId, created_at: previous?.created_at ?? now, updated_at: now };
+          user_name: profile.userName, device_id: profile.deviceId, created_at: previous?.created_at ?? now, updated_at: now, round_id: round };
         const payload = JSON.stringify(record);
         await tx.runAsync('INSERT INTO evaluations(record_id,natural_key,version,payload) VALUES (?,?,?,?) ON CONFLICT(natural_key) DO UPDATE SET version=excluded.version,payload=excluded.payload', record.record_id, key, record.version, payload);
         await tx.runAsync('INSERT INTO revisions(record_id,version,payload) VALUES (?,?,?)', record.record_id, record.version, payload);
@@ -138,14 +150,21 @@ export class Store {
       }
     return changed;
   }
-  private sheetKey(profile: Profile, bucket: string): string { return 'sheet:' + JSON.stringify([profile.userId, profile.cycle, profile.block, bucket]); }
+  private sheetKey(profile: Profile, bucket: string, round = ''): string { return 'sheet:' + JSON.stringify([profile.userId, profile.cycle, profile.block, bucket, ...(round ? [round] : [])]); }
+  private async resetRound(tx: Database, userId: string): Promise<void> {
+    await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'round:' + userId, JSON.stringify(this.uuid()));
+    await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'dates:' + userId, JSON.stringify(defaultDates()));
+  }
   async loadSheet(profile: Profile, bucket: string): Promise<Draft[]> {
-    const existing = await this.setting<Draft[] | null>(this.sheetKey(profile, bucket), null);
+    const round = await this.setting('round:' + profile.userId, '');
+    const existing = await this.setting<Draft[] | null>(this.sheetKey(profile, bucket, round), null);
     if (existing) return existing;
     const dates = await this.setting<DateSuggestions>('dates:' + profile.userId, defaultDates());
-    return createSheet(profile, bucket, await this.all(), dates, this.uuid);
+    return createSheet(profile, bucket, await this.all(), dates, this.uuid, round);
   }
   async saveSheet(profile: Profile, bucket: string, drafts: Draft[], catalog: string[]): Promise<string | null> {
+    const round = await this.setting('round:' + profile.userId, '');
+    if (drafts.some(r => (r.roundId ?? '') !== round)) throw new Error('Esta rodada já foi encerrada. Reabra o balde para continuar.');
     const rows = collectionRows(drafts);
     let error: string | null = null;
     try {
@@ -155,7 +174,10 @@ export class Store {
     catch (e) { error = e instanceof Error ? e.message : String(e); }
     await this.db.withExclusiveTransactionAsync(async tx => {
       // Persist raw text even while a numeric field is empty or invalid. Recover it on restart.
-      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', this.sheetKey(profile, bucket), JSON.stringify(drafts));
+      // Recheck inside the transaction so a delayed save cannot revive a cleared round.
+      const active = await tx.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', 'round:' + profile.userId);
+      if ((active ? JSON.parse(active.value) : '') !== round) throw new Error('Esta rodada já foi encerrada.');
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', this.sheetKey(profile, bucket, round), JSON.stringify(drafts));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'activeBucket', JSON.stringify(bucket));
       if (!error) {
         await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'dates:' + profile.userId, JSON.stringify(sheetDates(drafts)));
@@ -168,6 +190,17 @@ export class Store {
     // Records saved while a share sheet is open must not be marked as exported.
     const versions = Object.fromEntries(records.map(r => [r.record_id, r.version]));
     await this.db.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'export', JSON.stringify({ at: this.clock(), versions }));
+  }
+  async completeExport(records: Evaluation[]): Promise<void> {
+    const versions = Object.fromEntries(records.map(r => [r.record_id, r.version]));
+    const users = await this.users();
+    await this.db.withExclusiveTransactionAsync(async tx => {
+      const actual = (await tx.getAllAsync<Payload>('SELECT payload FROM evaluations')).map(r => JSON.parse(r.payload) as Evaluation);
+      if (actual.some(r => versions[r.record_id] !== r.version))
+        throw new Error('O CSV foi gravado, mas há alterações posteriores. O formulário foi preservado; exporte novamente.');
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'export', JSON.stringify({ at: this.clock(), versions }));
+      for (const user of users) await this.resetRound(tx, user.userId);
+    });
   }
   async exportState(records: Evaluation[]): Promise<{ at: string | null; pending: number }> {
     const state = await this.db.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', 'export');
