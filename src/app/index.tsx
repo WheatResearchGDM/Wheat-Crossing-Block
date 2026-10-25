@@ -256,11 +256,11 @@ export default function CollectionScreen() {
     </View>
 
     {dateRow && <DateTimePicker value={new Date(`${drafts.find(r => r.rowId === dateRow)?.date || today()}T12:00:00`)} mode="date" minimumDate={new Date(2000, 0, 1)} maximumDate={new Date(2100, 11, 31)} onChange={(event, date) => { const id = dateRow; setDateRow(null); if (event.type === 'set' && date) void pickDate(id, today(date)); }} />}
-    <Modal visible={!!panel} transparent animationType="fade" onRequestClose={() => { if (!busy) setPanel(null); }}>
+    <Modal visible={!!panel} transparent animationType="fade" onRequestClose={() => { if (!busy && (panel !== 'user' || profile.userName)) setPanel(null); }}>
       <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={styles.modalSafe}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeader}><Text style={styles.modalTitle}>{title}</Text><IconButton icon="x" label="Fechar" disabled={busy} onPress={() => setPanel(null)} /></View>
+            <View style={styles.modalHeader}><Text style={styles.modalTitle}>{title}</Text><IconButton icon="x" label="Fechar" disabled={busy || (panel === 'user' && !profile.userName)} onPress={() => setPanel(null)} /></View>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
               {panel === 'user' && <>
                 {users.map(u => <Action key={u.userId} disabled={busy} text={`${u.userName}${u.userId === profile.userId ? ' ✓' : ''}`} onPress={() => void selectUser(u.userName)} />)}
