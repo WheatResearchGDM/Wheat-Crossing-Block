@@ -1,8 +1,9 @@
 {
   "name": "wheat-crossing-block",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
     "@react-native-community/datetimepicker": "9.2.1",
     "expo": "~58.0.19",
     "expo-constants": "~58.0.13",

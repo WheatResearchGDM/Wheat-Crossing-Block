@@ -68,9 +68,82 @@ test('exportação acumulada preserva unicode, delimitadores, aspas e novas linh
   const { db, store } = await make();
   await store.save(profile, '1', [draft({ observation: 'Observação; "revisar"\namanhã' })], ['1']);
   const csv = toCsv(await store.all());
-  assert.ok(csv.startsWith('\ufeffschema_version;')); assert.ok(csv.includes('"Observação; ""revisar""\namanhã"'));
-  assert.equal(exportFilename(profile), exportFilename({ ...profile, userName: 'Nome corrigido' }));
-  assert.notEqual(exportFilename(profile), exportFilename({ ...profile, deviceId: 'outro' })); db.raw.close();
+  assert.ok(csv.startsWith('\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID'));
+  assert.ok(csv.includes('"Observação; ""revisar""\namanhã"')); assert.ok(csv.includes('"24/10/2026";"Emasculação";"12"'));
+  assert.equal(exportFilename(profile), 'REGISTRO_BC_COLETOR DE TESTE.csv');
+  assert.equal(exportFilename({ ...profile, userName: 'João / Sul' }), 'REGISTRO_BC_JOÃO _ SUL.csv'); db.raw.close();
+});
+
+test('último catálogo substitui navegação sem apagar coletas e preserva vínculo legado', async () => {
+  const { db, store } = await make();
+  await store.setProfile(profile);
+  await store.mergeCatalog([{ cycle: '2026', block: 'Teste', bucket: '1' }]);
+  await store.save(profile, '1', [draft()], ['1']);
+  const next = await store.replaceCatalog([{ cycle: '', block: 'Teste', bucket: '2' }, { cycle: '', block: 'Novo', bucket: '3' }], 'ultimo.xlsx');
+  assert.equal(next.find(e => e.block === 'Teste').cycle, '2026');
+  assert.ok(!next.some(e => e.bucket === '1')); assert.equal((await store.all()).length, 1);
+  assert.equal(await store.setting('catalogSource', ''), 'ultimo.xlsx'); db.raw.close();
+});
+
+test('rascunho incompleto sobrevive ao reinício e não substitui uma avaliação válida por vazio', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bc-autosave-'));
+  try {
+    const filename = join(directory, 'bc.db'); const first = await make(new Adapter(filename));
+    await first.store.setProfile(profile);
+    const sheet = await first.store.loadSheet(profile, '1');
+    sheet[0].date = '2026-10-24'; sheet[3].date = '2026-10-24'; sheet[0].quantity = '17';
+    assert.equal(await first.store.saveSheet(profile, '1', sheet, ['1']), null);
+    sheet[0].quantity = '';
+    assert.match(await first.store.saveSheet(profile, '1', sheet, ['1']), /quantidade/);
+    first.db.raw.close();
+    const second = await make(new Adapter(filename));
+    const recovered = await second.store.loadSheet(profile, '1');
+    assert.equal(recovered[0].quantity, '');
+    assert.equal((await second.store.all()).find(r => r.purpose === 'EMASC').quantity, 17);
+    recovered[0].quantity = '0'; await second.store.saveSheet(profile, '1', recovered, ['1']);
+    assert.equal((await second.store.all()).length, 2);
+    assert.equal((await second.store.all()).find(r => r.purpose === 'EMASC').quantity, 0);
+    second.db.raw.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('seis linhas, datas sugeridas e zero somente nos baldes visitados', async () => {
+  const { db, store } = await make();
+  const sheet = await store.loadSheet(profile, '1'); assert.equal(sheet.length, 6);
+  assert.ok(sheet.every(r => r.quantity === '0'));
+  assert.equal((await store.all()).length, 0);
+  sheet[0].date = '2026-10-26'; sheet[1].date = '2026-10-27'; sheet[3].date = '2026-10-28';
+  await store.saveSheet(profile, '1', sheet, ['1', '2']);
+  const next = await store.loadSheet(profile, '2');
+  assert.deepEqual(next.map(r => r.date), sheet.map(r => r.date));
+  assert.ok(next.every(r => r.quantity === '0')); assert.equal((await store.all()).length, 3);
+  assert.ok((await store.all()).every(r => r.bucket === '1')); db.raw.close();
+});
+
+test('troca de usuário mantém identidades, rascunhos e destinos separados', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  const sheet = await store.loadSheet(profile, '1'); sheet[0].quantity = '19';
+  await store.saveSheet(profile, '1', sheet, ['1']);
+  const other = await store.selectUser('Outro coletor');
+  assert.notEqual(other.userId, profile.userId); assert.equal(other.deviceId, profile.deviceId);
+  const fresh = await store.loadSheet(other, '1'); assert.equal(fresh[0].quantity, '0');
+  await store.saveSheet(other, '1', fresh, ['1']);
+  const restored = await store.selectUser('coletor de teste'); assert.equal(restored.userId, profile.userId);
+  assert.equal((await store.loadSheet(restored, '1'))[0].quantity, '19');
+  assert.equal((await store.users()).length, 2);
+  await store.setSetting('output:' + other.userId, { kind: 'file', uri: 'content://test/outro' });
+  assert.equal(await store.setting('output:' + restored.userId, null), null); db.raw.close();
+});
+
+test('CSV mantém histórico de datas e protege textos interpretáveis como fórmulas', async () => {
+  const { db, store } = await make();
+  const sheet = await store.loadSheet(profile, '1'); sheet[0].date = '2026-10-24'; sheet[0].observation = '=1+1';
+  await store.saveSheet(profile, '1', sheet, ['1']);
+  sheet[0].date = '2026-10-25'; sheet[0].quantity = '9';
+  await store.saveSheet(profile, '1', sheet, ['1']);
+  const rows = await store.all();
+  assert.equal(rows.filter(r => r.purpose === 'EMASC').length, 2);
+  assert.ok(toCsv(rows).includes('"\'=1+1"')); db.raw.close();
 });
 test('uma correção posterior à geração do CSV continua pendente', async () => {
   const { db, store } = await make(); await store.save(profile, '1', [draft()], ['1']);

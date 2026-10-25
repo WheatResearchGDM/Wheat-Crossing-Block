@@ -5,7 +5,7 @@ export type CatalogImport = { entries: CatalogEntry[]; duplicates: number; sheet
 const normalized = (text: unknown) => String(text ?? '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[ _-]+/g, ' ');
 export const catalogKey = (entry: CatalogEntry) => JSON.stringify([entry.cycle, entry.block, entry.bucket]);
 export function validateCatalogEntry(entry: CatalogEntry): void {
-  if (!entry.cycle.trim() || entry.cycle.length > 80) throw new Error('Safra/ciclo ausente ou maior que 80 caracteres.');
+  if (entry.cycle.length > 80) throw new Error('Safra/ciclo maior que 80 caracteres.');
   if (!entry.block.trim() || entry.block.length > 80) throw new Error('Bloco ausente ou maior que 80 caracteres.');
   if (!/^\d{1,8}$/.test(entry.bucket)) throw new Error('Balde deve conter apenas números, com até 8 dígitos.');
 }
@@ -16,7 +16,7 @@ function columns(header: unknown[]): { cycle: number; block: number; bucket: num
     if (matches.length > 1) throw new Error('Há colunas repetidas para safra, bloco ou balde.');
     return matches[0] ?? -1;
   };
-  return { cycle: find(['safra', 'ciclo', 'safra/ciclo', 'cycle']), block: find(['bloco', 'bloco de cruzamento', 'bc', 'block']), bucket: find(['balde', 'numero do balde', 'bucket']) };
+  return { cycle: find(['safra', 'ciclo', 'safra/ciclo', 'cycle']), block: find(['nome do bloco', 'bloco', 'bloco de cruzamento', 'bc', 'block']), bucket: find(['balde', 'numero do balde', 'bucket']) };
 }
 export function parseCatalog(bytes: Uint8Array, filename: string, defaultCycle = ''): CatalogImport {
   if (!/\.(csv|xlsx|xls)$/i.test(filename)) throw new Error('Selecione um arquivo CSV, XLSX ou XLS.');

@@ -2,19 +2,19 @@
   "expo": {
     "name": "Registro de BC",
     "slug": "wheat-crossing-block",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "default",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/wheat-icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "versionCode": 2,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#123047",
+        "foregroundImage": "./assets/wheat-foreground.png",
+        "monochromeImage": "./assets/wheat-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.wheatresearchgdm.crossingblock",

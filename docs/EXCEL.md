@@ -1,5 +1,7 @@
 # Integração com o Excel
 
+**Versão 0.2:** o app agora exporta `REGISTRO_BC_[USUÁRIO].csv` com oito colunas: Nome do Bloco, Balde, Data, Propósito, Disponibilidade, Observação, Data de criação e Device ID. O módulo VBA abaixo continua como protótipo para o formato técnico de 15 colunas da versão 0.1 e recusará o novo CSV. É necessário adaptar a importação por snapshot antes de utilizá-lo com a versão 0.2. As instruções seguintes descrevem apenas o protótipo legado. O arquivo operacional não foi alterado.
+
 ## Estrutura de destino
 
 Na aba `DISPONIBILIDADE`, a estrutura identificada é:

@@ -6,6 +6,8 @@ export type Evaluation = {
   user_id: string; user_name: string; device_id: string; created_at: string; updated_at: string;
 };
 export type Draft = { rowId: string; date: string; quantity: string; observation: string; purpose: Purpose };
+export type OutputTarget = { kind: 'folder' | 'file'; uri: string; name: string; filename?: string };
+export const OUTPUT_HEADERS = ['Nome do Bloco', 'Balde', 'Data', 'Propósito', 'Disponibilidade', 'Observação', 'Data de criação', 'Device ID'] as const;
 export const HEADERS = ['schema_version', 'record_id', 'version', 'cycle', 'block', 'bucket', 'date',
   'purpose', 'quantity', 'observation', 'user_id', 'user_name', 'device_id', 'created_at', 'updated_at'] as const;
 export const MAX_QUANTITY = 100000;
@@ -25,7 +27,7 @@ export function logicalKey(row: Pick<Evaluation, 'cycle' | 'block' | 'bucket' | 
   return JSON.stringify([row.cycle, row.block, row.bucket, row.date, row.purpose]);
 }
 export function validateProfile(profile: Profile): void {
-  for (const [name, value] of [['Nome', profile.userName], ['Safra/ciclo', profile.cycle], ['Bloco', profile.block]]) {
+  for (const [name, value] of [['Nome', profile.userName], ['Bloco', profile.block]]) {
     if (!value.trim() || value.length > 80) throw new Error(`${name}: informe entre 1 e 80 caracteres.`);
   }
 }
@@ -49,11 +51,19 @@ export function validateDrafts(profile: Profile, bucket: string, drafts: Draft[]
 }
 
 export function toCsv(records: Evaluation[]): string {
-  const quote = (value: unknown) => `"${String(value).replace(/"/g, '""')}"`;
-  return '\ufeff' + [HEADERS.join(';'), ...[...records].sort((a, b) => a.record_id.localeCompare(b.record_id))
-    .map(row => HEADERS.map(key => quote(row[key])).join(';'))].join('\r\n') + '\r\n';
+  // Quoting alone does not stop spreadsheet formula execution in user-entered text.
+  const quote = (value: unknown) => {
+    let text = String(value);
+    if (/^[\s]*[=+\-@]/.test(text)) text = "'" + text;
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+  return '\ufeff' + [OUTPUT_HEADERS.join(';'), ...[...records].sort((a, b) =>
+    a.block.localeCompare(b.block) || Number(a.bucket) - Number(b.bucket) || a.date.localeCompare(b.date) || a.purpose.localeCompare(b.purpose))
+    .map(row => [row.block, row.bucket, displayDate(row.date), row.purpose === 'EMASC' ? 'Emasculação' : 'Polinização',
+      row.quantity, row.observation, row.created_at, row.device_id].map(quote).join(';'))].join('\r\n') + '\r\n';
 }
 export function exportFilename(profile: Profile): string {
-  // IDs persist even when the display name changes. Never share a file between devices.
-  return `coletas_${profile.userId}_${profile.deviceId}.csv`;
+  const name = profile.userName.trim().toLocaleUpperCase('pt-BR').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 80);
+  if (!name) throw new Error('Escolha um usuário antes de exportar.');
+  return `REGISTRO_BC_${name}.csv`;
 }

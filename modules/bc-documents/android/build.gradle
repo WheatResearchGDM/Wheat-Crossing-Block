@@ -1,0 +1,13 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'expo.modules.bcdocuments'
+version = '1.0.0'
+android {
+  namespace 'expo.modules.bcdocuments'
+  defaultConfig { versionCode 1; versionName '1.0.0' }
+}
+dependencies {
+  implementation 'androidx.documentfile:documentfile:1.1.0'
+}
