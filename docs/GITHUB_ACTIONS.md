@@ -2,6 +2,10 @@
 
 O workflow **Gerar APK Android** compila no próprio GitHub. Não exige conta/token Expo nem chave de produção nos Secrets. Ele produz uma variante independente para teste chamada **Registro de BC (GitHub)**.
 
+Versão **0.3.0**: [baixar APK](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40155081615/artifacts/12584104042). [Compilação concluída com sucesso](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40155081615), código `c67438c`. Inclui CSV por aparelho com nome do usuário, nova rodada em branco após exportar ou trocar usuário, lixeira no pop-up de usuários e envio de cópia por compartilhamento. Os 28 testes, TypeScript e lint passaram. Exclusão de usuário e limpeza de formulário preservam o histórico. Enviar cópia não confirma recebimento e não limpa o formulário; o teste de OneDrive real ainda depende do aparelho.
+
+O pacote 0.3.0 foi baixado e conferido: digest do ZIP, estrutura do APK, JavaScript embarcado, ARM 32/64 bits e certificado igual ao da versão 0.2.0. Cópia local ignorada pelo Git: `outputs/RegistroBC-GitHub-0.3.0.apk`. SHA-256 do APK: `71f42a122c7aec4ffb099ffb394c2f6991ab65ec9d226dbd5841d8f105fb1782`. Instale como atualização, preservando os dados do app. A instalação e o uso no aparelho continuam no roteiro de piloto.
+
 Versão **0.2.0**, com coleta compacta, salvamento automático e ícone de espiga: [baixar APK](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40150872590/artifacts/12582304034). [Execução concluída com sucesso](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40150872590), código `ed67275`. Os 21 testes, lint e TypeScript passaram. O teste em aparelho e com o OneDrive real faz parte do piloto.
 
 Conferidos o digest SHA-256 do ZIP, a estrutura do APK, o bundle embarcado, as bibliotecas ARM 32/64 bits e a igualdade do certificado com o APK GitHub anterior. APK local: `outputs/RegistroBC-GitHub-0.2.0.apk` (ignorado pelo Git). SHA-256: `0aac9c9c0f4d376bac917e0b37460ffbdc15ddf2a889b83896781e64a97da4fa`. A comparação do certificado não substitui o teste de instalação e funcionamento no aparelho.

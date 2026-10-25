@@ -3,7 +3,7 @@ Aplicativo para coleta de espigas disponíveis no BC.
 
 Versão Android 0.3.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
 
-Abra a execução bem-sucedida mais recente de [Gerar APK Android](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/workflows/android-apk.yml), baixe o artefato e extraia o ZIP. Instale `RegistroBC-GitHub.apk` como atualização de **Registro de BC (GitHub)**. [Instruções](docs/INSTALAR_ANDROID.md).
+[Baixar APK 0.3.0](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40155081615/artifacts/12584104042). Extraia o ZIP e instale `RegistroBC-GitHub.apk` como atualização de **Registro de BC (GitHub)**. [Instruções](docs/INSTALAR_ANDROID.md).
 
 ## Fluxo implementado
 
