@@ -68,9 +68,9 @@ test('exportação acumulada preserva unicode, delimitadores, aspas e novas linh
   const { db, store } = await make();
   await store.save(profile, '1', [draft({ observation: 'Observação; "revisar"\namanhã' })], ['1']);
   const csv = toCsv(await store.all());
-  assert.ok(csv.startsWith('\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID'));
+  assert.ok(csv.startsWith('\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Prioridade;Nome do usuário;Data de criação;Device ID'));
   assert.ok(csv.includes('"Observação; ""revisar""\namanhã"')); assert.ok(csv.includes('"24/10/2026";"Emasculação";"12"'));
-  assert.ok(csv.includes('Device ID;Nome do usuário'));
+  assert.ok(csv.includes('Prioridade;Nome do usuário;Data de criação;Device ID'));
   assert.equal(exportFilename(profile), 'REGISTRO_BC_aparelho-1.csv');
   assert.equal(exportFilename({ ...profile, userName: 'Outro usuário' }), exportFilename(profile));
   assert.notEqual(exportFilename({ ...profile, deviceId: 'aparelho-2' }), exportFilename(profile)); db.raw.close();
@@ -122,7 +122,7 @@ test('seis linhas, datas sugeridas e zero somente nos baldes visitados', async (
   assert.ok((await store.all()).every(r => r.bucket === '1')); db.raw.close();
 });
 
-test('troca de usuário mantém identidades e histórico, mas limpa a rodada e reutiliza o destino do aparelho', async () => {
+test('troca de usuário mantém a coleta em andamento e reutiliza o destino do aparelho', async () => {
   const { db, store } = await make(); await store.setProfile(profile);
   const sheet = await store.loadSheet(profile, '1'); sheet[0].date = '2026-10-24'; sheet[0].quantity = '19';
   await store.saveSheet(profile, '1', sheet, ['1']);
@@ -131,8 +131,8 @@ test('troca de usuário mantém identidades e histórico, mas limpa a rodada e r
   const fresh = await store.loadSheet(other, '1'); assert.equal(fresh[0].quantity, '0');
   await store.saveSheet(other, '1', fresh, ['1']);
   const restored = await store.selectUser('coletor de teste'); assert.equal(restored.userId, profile.userId);
-  const cleared = await store.loadSheet(restored, '1');
-  assert.ok(cleared.every(r => r.date === '' && r.quantity === '0' && r.observation === ''));
+  const resumed = await store.loadSheet(restored, '1');
+  assert.equal(resumed[0].date, '2026-10-24'); assert.equal(resumed[0].quantity, '19');
   assert.equal((await store.all()).find(r => r.user_id === profile.userId).quantity, 19);
   assert.equal((await store.users()).length, 2);
   await store.setSetting('outputDevice', { kind: 'folder', uri: 'content://test/pasta' });
@@ -284,7 +284,7 @@ test('CSV acrescenta somente Prioridade e usa a última escolha para todas as li
   const { db, store } = await make(); await store.setProfile(profile);
   await store.save(profile, '1', [draft(), draft({ purpose: 'POLI' })], ['1']);
   const legacy = (await store.all())[0]; delete legacy.priority;
-  assert.match(toCsv([legacy]).split('\r\n')[1], /;"NÃO"$/);
+  assert.equal(toCsv([legacy]).split('\r\n')[1].split(';')[6], '"NÃO"');
   const before = await store.all();
   await store.setPriority(profile, '1', true);
   const prioritized = await store.all();
@@ -292,15 +292,18 @@ test('CSV acrescenta somente Prioridade e usa a última escolha para todas as li
   assert.deepEqual(prioritized.map(r => r.record_id), before.map(r => r.record_id));
   assert.deepEqual(prioritized.map(r => r.created_at), before.map(r => r.created_at));
   const csv = toCsv(prioritized).split('\r\n');
-  assert.equal(csv[0], '\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID;Nome do usuário;Prioridade');
-  assert.ok(csv.slice(1, -1).every(row => row.endsWith(';"SIM"') && row.split(';').length === 10));
+  assert.equal(csv[0], '\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Prioridade;Nome do usuário;Data de criação;Device ID');
+  assert.ok(csv.slice(1, -1).every(row => row.split(';')[6] === '"SIM"' && row.split(';').length === 10));
+  assert.equal(csv[1].split(';')[7], '"Coletor de teste"');
+  assert.equal(csv[1].split(';')[8], `"${prioritized[0].created_at}"`);
+  assert.equal(csv[1].split(';')[9], '"aparelho-1"');
   await assert.rejects(store.completeExport(before), /alterações posteriores/);
   await store.setPriority(profile, '1', true);
   assert.ok((await store.all()).every(r => r.version === 2));
   await store.completeExport(await store.all());
   await store.setPriority(profile, '1', false);
   assert.ok((await store.all()).every(r => r.priority === false && r.version === 3));
-  assert.ok(toCsv(await store.all()).split('\r\n').slice(1,-1).every(row => row.endsWith(';"NÃO"')));
+  assert.ok(toCsv(await store.all()).split('\r\n').slice(1,-1).every(row => row.split(';')[6] === '"NÃO"'));
   assert.equal((await db.getAllAsync('SELECT * FROM revisions')).length, 6);
   db.raw.close();
 });
@@ -313,5 +316,74 @@ test('falha ao revisar prioridade reverte tanto o botão quanto as avaliações'
   await assert.rejects(store.setPriority(profile, '1', true), /falha de escrita/);
   assert.equal(await store.getPriority(profile, '1'), false);
   assert.deepEqual(await store.all(), before);
+  db.raw.close();
+});
+
+test('balde visitado em branco recebe últimas datas sem apagar avaliações existentes ou substituir a sugestão', async () => {
+  const { db, store } = await make();
+  const empty = await store.loadSheet(profile, '2');
+  await store.saveSheet(profile, '2', empty, ['1', '2', '3']);
+  const first = await store.loadSheet(profile, '1'); first[0].date = '2026-10-26'; first[0].quantity = '12';
+  const { sheetDates } = require(join(process.env.BC_TEST_BUILD, 'collection.js'));
+  await store.saveSheet(profile, '1', first, ['1', '2', '3'], sheetDates(first));
+  const second = await store.loadSheet(profile, '2');
+  assert.equal(second[0].date, '2026-10-26'); assert.equal(second[0].quantity, '0');
+  second[0].date = '2026-10-27'; second[0].quantity = '8';
+  await store.saveSheet(profile, '2', second, ['1', '2', '3'], sheetDates(second));
+  const old = await store.loadSheet(profile, '1');
+  assert.equal(old[0].date, '2026-10-26'); assert.equal(old[0].quantity, '12');
+  await store.saveSheet(profile, '1', old, ['1', '2', '3']);
+  const next = await store.loadSheet(profile, '3');
+  assert.equal(next[0].date, '2026-10-27');
+  assert.ok(next.every(r => r.quantity === '0'));
+  db.raw.close();
+});
+
+test('datas da última seleção e contagens sobrevivem ao reinício e só limpam após exportar', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bc-dates-'));
+  try {
+    const filename = join(directory, 'bc.db'); const first = await make(new Adapter(filename));
+    await first.store.setProfile(profile);
+    const sheet = await first.store.loadSheet(profile, '1'); sheet[0].date = '2026-10-26'; sheet[0].quantity = '23';
+    const { sheetDates } = require(join(process.env.BC_TEST_BUILD, 'collection.js'));
+    await first.store.saveSheet(profile, '1', sheet, ['1', '2'], sheetDates(sheet));
+    first.db.raw.close();
+    const second = await make(new Adapter(filename));
+    assert.equal((await second.store.loadSheet(profile, '1'))[0].quantity, '23');
+    assert.equal((await second.store.loadSheet(profile, '2'))[0].date, '2026-10-26');
+    await second.store.selectUser('Maria'); await second.store.selectUser(profile.userName);
+    assert.equal((await second.store.loadSheet(profile, '1'))[0].quantity, '23');
+    const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
+    await assert.rejects(exportDevice(second.store, profile, async () => { throw new Error('Falhou'); }));
+    assert.equal((await second.store.loadSheet(profile, '1'))[0].quantity, '23');
+    await exportDevice(second.store, profile, async () => {});
+    for (const bucket of ['1', '2']) assert.ok((await second.store.loadSheet(profile, bucket)).every(r => r.date === '' && r.quantity === '0'));
+    assert.equal((await second.store.all())[0].quantity, 23);
+    second.db.raw.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('cadastro é revisto a cada ciclo, com alternativa offline e atualização sem apagar dados', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  assert.equal(await store.needsCatalogReview(), true);
+  await assert.rejects(store.useLastCatalog(), /Importe um cadastro/);
+  await store.replaceCatalog([{ cycle: '2026', block: 'Teste', bucket: '1' }], 'primeiro.xlsx');
+  assert.equal(await store.needsCatalogReview(), false);
+  assert.ok(await store.setting('catalogImportedAt', ''));
+  await store.setPriority(profile, '1', true);
+  await store.save(profile, '1', [draft()], ['1']);
+  const records = await store.all();
+  await assert.rejects(store.replaceCatalog([], 'vazio.xlsx'));
+  assert.equal(await store.setting('catalogSource', ''), 'primeiro.xlsx');
+  await store.completeExport(records); assert.equal(await store.needsCatalogReview(), true);
+  await store.useLastCatalog(); assert.equal(await store.needsCatalogReview(), false);
+  await store.completeExport(records); assert.equal(await store.needsCatalogReview(), true);
+  await store.replaceCatalog([{ cycle: '2026', block: 'Teste', bucket: '2' }], 'atualizado.xlsx');
+  assert.equal(await store.needsCatalogReview(), false);
+  assert.deepEqual((await store.getCatalog()).map(e => e.bucket), ['2']);
+  assert.deepEqual(await store.all(), records);
+  assert.equal(await store.getPriority(profile, '1'), true);
+  assert.equal(await store.setting('catalogSource', ''), 'atualizado.xlsx');
+  assert.equal(await store.setting('activeBucket', ''), '');
   db.raw.close();
 });

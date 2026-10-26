@@ -2,7 +2,7 @@ import { logicalKey, validateDrafts } from './model';
 import type { Draft, Evaluation, Profile } from './model';
 import { catalogKey, validateCatalogEntry } from './catalog';
 import type { CatalogEntry } from './catalog';
-import { collectionRows, createSheet, defaultDates, sheetDates } from './collection';
+import { collectionRows, createSheet, defaultDates, sheetDates, suggestMissingDates } from './collection';
 import type { DateSuggestions } from './collection';
 
 // Small adapter keeps persistence testable against real SQLite outside Android.
@@ -92,7 +92,6 @@ export class Store {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'users', JSON.stringify(users));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'profile', JSON.stringify(next));
       if (previous.userId !== next.userId || !previous.userName) {
-        await this.resetRound(tx, next.userId);
         await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'activeBucket', JSON.stringify(''));
       }
     });
@@ -141,8 +140,17 @@ export class Store {
     await this.db.withExclusiveTransactionAsync(async tx => {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalog', JSON.stringify(next));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogSource', JSON.stringify(filename));
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogImportedAt', JSON.stringify(this.clock()));
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogReviewPending', JSON.stringify(false));
     });
     return next;
+  }
+  async needsCatalogReview(): Promise<boolean> {
+    return this.setting('catalogReviewPending', true);
+  }
+  async useLastCatalog(): Promise<void> {
+    if (!(await this.getCatalog()).length) throw new Error('Importe um cadastro de baldes antes de continuar.');
+    await this.setSetting('catalogReviewPending', false);
   }
   async all(): Promise<Evaluation[]> {
     return (await this.db.getAllAsync<Payload>('SELECT payload FROM evaluations')).map(r => JSON.parse(r.payload));
@@ -186,11 +194,11 @@ export class Store {
   async loadSheet(profile: Profile, bucket: string): Promise<Draft[]> {
     const round = await this.setting('round:' + profile.userId, '');
     const existing = await this.setting<Draft[] | null>(this.sheetKey(profile, bucket, round), null);
-    if (existing) return existing;
     const dates = await this.setting<DateSuggestions>('dates:' + profile.userId, defaultDates());
-    return createSheet(profile, bucket, await this.all(), dates, this.uuid, round);
+    if (existing) return suggestMissingDates(existing, dates);
+    return suggestMissingDates(createSheet(profile, bucket, await this.all(), dates, this.uuid, round), dates);
   }
-  async saveSheet(profile: Profile, bucket: string, drafts: Draft[], catalog: string[]): Promise<string | null> {
+  async saveSheet(profile: Profile, bucket: string, drafts: Draft[], catalog: string[], selectedDates?: DateSuggestions): Promise<string | null> {
     const round = await this.setting('round:' + profile.userId, '');
     if (drafts.some(r => (r.roundId ?? '') !== round)) throw new Error('Esta rodada já foi encerrada. Reabra o balde para continuar.');
     const rows = collectionRows(drafts);
@@ -207,8 +215,10 @@ export class Store {
       if ((active ? JSON.parse(active.value) : '') !== round) throw new Error('Esta rodada já foi encerrada.');
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', this.sheetKey(profile, bucket, round), JSON.stringify(drafts));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'activeBucket', JSON.stringify(bucket));
+      const previousDates = await tx.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', 'dates:' + profile.userId);
+      // Only an explicit date selection updates the template. Revisiting old buckets must not replace it.
+      if (selectedDates || !previousDates) await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'dates:' + profile.userId, JSON.stringify(selectedDates ?? sheetDates(drafts)));
       if (!error) {
-        await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'dates:' + profile.userId, JSON.stringify(sheetDates(drafts)));
         if (rows.length) await this.saveRows(tx, profile, bucket, rows);
       }
     });
@@ -229,6 +239,7 @@ export class Store {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'export', JSON.stringify({ at: this.clock(), versions }));
       for (const user of users) await this.resetRound(tx, user.userId);
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'activeBucket', JSON.stringify(''));
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogReviewPending', JSON.stringify(true));
     });
   }
   async exportState(records: Evaluation[]): Promise<{ at: string | null; pending: number }> {

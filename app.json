@@ -2,7 +2,7 @@
   "expo": {
     "name": "Registro de BC",
     "slug": "wheat-crossing-block",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "orientation": "default",
     "icon": "./assets/wheat-icon.png",
     "userInterfaceStyle": "light",
@@ -10,7 +10,7 @@
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#123047",
         "foregroundImage": "./assets/wheat-foreground.png",

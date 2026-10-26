@@ -18,6 +18,17 @@ export function createSheet(profile: Profile, bucket: string, records: Evaluatio
 export function sheetDates(sheet: Draft[]): DateSuggestions {
   return { EMASC: sheet.filter(r => r.purpose === 'EMASC').map(r => r.date), POLI: sheet.filter(r => r.purpose === 'POLI').map(r => r.date) };
 }
+export function suggestMissingDates(sheet: Draft[], dates: DateSuggestions): Draft[] {
+  const slots: Record<Purpose, number> = { EMASC: 0, POLI: 0 };
+  const used = { EMASC: new Set(sheet.filter(r => r.purpose === 'EMASC' && r.date).map(r => r.date)),
+    POLI: new Set(sheet.filter(r => r.purpose === 'POLI' && r.date).map(r => r.date)) };
+  return sheet.map(row => {
+    const date = dates[row.purpose][slots[row.purpose]++];
+    if (row.date || !date || used[row.purpose].has(date)) return row;
+    used[row.purpose].add(date);
+    return { ...row, date };
+  });
+}
 export function collectionRows(sheet: Draft[]): Draft[] {
   return sheet.filter(r => r.date || r.observation.trim() || (r.quantity.trim() !== '' && Number(r.quantity) !== 0));
 }
@@ -28,8 +39,8 @@ export function changeSheetDate(sheet: Draft[], id: string, date: string, record
     throw new Error('Esta data já está em outra linha da mesma finalidade.');
   const saved = records.find(r => r.user_id === profile.userId && r.cycle === profile.cycle && r.block === profile.block && r.bucket === bucket && r.purpose === row.purpose && r.date === date && (r.round_id ?? '') === (row.roundId ?? ''));
   return sheet.map(r => r.rowId === id ? { ...r, date,
-    quantity: saved ? String(saved.quantity) : row.date ? '0' : row.quantity,
-    observation: saved?.observation ?? (row.date ? '' : row.observation) } : r);
+    quantity: saved ? String(saved.quantity) : row.quantity,
+    observation: saved?.observation ?? row.observation } : r);
 }
 
 // Every keystroke has its own immutable snapshot. Writes never race across buckets/users.

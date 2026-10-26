@@ -25,7 +25,7 @@ test('escolher data após digitar preserva o rascunho; outra data abre sua próp
   const first = changeSheetDate(sheet, 'linha', '2026-10-24', [], profile, '1');
   assert.equal(first[0].quantity, '17'); assert.equal(first[0].observation, 'PASSADA');
   const fresh = changeSheetDate(first, 'linha', '2026-10-25', [], profile, '1');
-  assert.equal(fresh[0].quantity, '0'); assert.equal(fresh[0].observation, '');
+  assert.equal(fresh[0].quantity, '17'); assert.equal(fresh[0].observation, 'PASSADA');
   const records = [{ user_id: 'a', cycle: '', block: 'BC', bucket: '1', purpose: 'EMASC', date: '2026-10-26', quantity: 21, observation: 'Revisado' }];
   const reopened = changeSheetDate(first, 'linha', '2026-10-26', records, profile, '1');
   assert.equal(reopened[0].quantity, '21'); assert.equal(reopened[0].observation, 'Revisado');

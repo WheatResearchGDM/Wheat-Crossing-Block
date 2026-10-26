@@ -1,18 +1,18 @@
 # Instalar a versão de teste no Android
 
-## Versão 0.4 pelo GitHub
+## Versão 0.5 pelo GitHub
 
 Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK Android**. Baixe **RegistroBC-Android-celular-tablet**, extraia o ZIP e abra `RegistroBC-GitHub.apk`. O nome no celular é **Registro de BC (GitHub)**, agora com uma espiga dourada no ícone. Instale como atualização da variante GitHub que já está no aparelho; não desinstale nem limpe os dados.
 
 1. Toque no usuário no canto superior esquerdo e informe seu nome.
-2. Em Configurações, importe o cadastro com `Nome do Bloco` e `Balde`.
+2. No início de cada ciclo, selecione o arquivo atualizado com `Nome do Bloco` e `Balde`, ou use o último cadastro como alternativa offline. A lista também pode ser atualizada em Configurações sem apagar as avaliações anteriores.
 3. Escolha o BC pelo nome no topo e navegue pelos baldes. O botão discreto de prioridade abaixo do número fica em `#b4bd00` quando ligado. Cada balde mantém sua última escolha, mesmo ao iniciar outra coleta ou reiniciar o app.
-4. Escolha até três datas para cada finalidade e ajuste as quantidades com `↓ número ↑`. Tocar no número permite digitá-lo; a observação oferece opções e texto livre.
+4. Escolha até três datas para cada finalidade; os campos vazios dos próximos baldes recebem as últimas datas escolhidas. As avaliações existentes são preservadas. Ajuste as quantidades com `↓ número ↑`. Tocar no número permite digitá-lo; a observação oferece opções e texto livre.
 5. As alterações ficam gravadas no aparelho automaticamente; confira o indicador no rodapé. Datas são sugeridas para os próximos baldes e as quantidades começam em zero.
-6. Escolha a pasta de saída em Configurações, ou use **Criar arquivo de saída** / **Escolher CSV existente**. O destino é compartilhado pelos usuários do aparelho.
+6. Em Configurações → **Escolher destino** / **Alterar destino**, escolha uma pasta, crie o arquivo ou selecione o CSV existente. O destino é compartilhado pelos usuários do aparelho.
 7. Exporte para atualizar `REGISTRO_BC_[ID_DO_APARELHO].csv`, com todos os usuários e a nova coluna `Prioridade` (`SIM`/`NÃO`). A gravação confirmada limpa datas, espigas e observações e volta ao primeiro balde do bloco, preservando o histórico e as prioridades.
-8. Trocar de usuário inicia outra rodada em branco. A lixeira no pop-up exclui o nome da lista, com confirmação, preservando as coletas. Excluir o usuário ativo exige nova identificação.
-9. Se o OneDrive não aparecer no seletor, use **Enviar cópia (OneDrive…)** e confirme o envio no próprio OneDrive, se disponível. Compartilhar não confirma recebimento e não limpa a tela. É possível exportar para uma pasta local antes de enviar a cópia.
+8. Trocar de usuário preserva a coleta em andamento de cada usuário. Somente a exportação confirmada limpa os campos. A lixeira no pop-up exclui o nome da lista, com confirmação, preservando as avaliações. Excluir o usuário ativo exige nova identificação.
+9. Se o OneDrive não aparecer no seletor, use **Enviar cópia dos dados** e confirme o envio no próprio OneDrive, se disponível. Esse recurso também gera novamente o CSV acumulado com os dados internos. Compartilhar não confirma recebimento e não limpa a tela. É possível exportar para uma pasta local antes de enviar a cópia.
 
 A atualização preserva o banco quando Android reconhece o mesmo pacote e assinatura. Se o Android informar incompatibilidade de assinatura, mantenha o app antigo instalado e exporte/confira seus dados antes de qualquer reinstalação. O teste de escrita e sincronização com o OneDrive da organização deve ser feito no aparelho.
 

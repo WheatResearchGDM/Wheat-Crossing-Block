@@ -8,7 +8,7 @@ import { displayDate, exportFilename, MAX_QUANTITY, today } from '../core/model'
 import type { Draft, OutputTarget, Profile } from '../core/model';
 import type { CatalogEntry } from '../core/catalog';
 import type { Store } from '../core/store';
-import { changeSheetDate, SaveQueue } from '../core/collection';
+import { changeSheetDate, SaveQueue, sheetDates } from '../core/collection';
 import { exportDevice } from '../core/export-flow';
 import { openStore } from '../services/storage';
 import { chooseOutput, exportCsv, shareCsv } from '../services/export';
@@ -17,7 +17,7 @@ import { selectCatalog } from '../services/catalog-import';
 const colors = { ink: '#123047', muted: '#597080', line: '#D6E0E5', field: '#F4F7F8', paper: '#FFFFFF', green: '#35624C', red: '#AA3030' };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 type Context = { profile: Profile; catalog: CatalogEntry[]; bucket: string; drafts: Draft[]; priority: boolean };
-type Panel = 'user' | 'settings' | 'block' | 'bucket' | 'quantity' | 'observation' | null;
+type Panel = 'user' | 'settings' | 'catalog' | 'output' | 'block' | 'bucket' | 'quantity' | 'observation' | null;
 type User = Pick<Profile, 'userId' | 'userName'>;
 type IconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -50,6 +50,7 @@ export default function CollectionScreen() {
   const [rowId, setRowId] = useState<string | null>(null);
   const [dateRow, setDateRow] = useState<string | null>(null);
   const [source, setSource] = useState('Nenhum arquivo importado');
+  const [importedAt, setImportedAt] = useState('');
   const [target, setTarget] = useState<OutputTarget | null>(null);
   const [pending, setPending] = useState(0);
   const [saveError, setSaveError] = useState('');
@@ -86,19 +87,21 @@ export default function CollectionScreen() {
       await reload(profile, catalog, await storage.setting<string>('activeBucket', ''));
       setUsers(await storage.users());
       setSource(await storage.setting('catalogSource', 'Nenhum arquivo importado'));
+      setImportedAt(await storage.setting('catalogImportedAt', ''));
       if (!profile.userName) { setEdit(''); setPanel('user'); }
-      else if (!catalog.length) setPanel('settings');
+      else if (!catalog.length || await storage.needsCatalogReview()) setPanel('catalog');
     })().catch(e => { if (active) setFatal(message(e)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [reload, retry]);
 
-  function persist(next: Context) {
+  function persist(next: Context, datesSelected = false) {
     if (!next.profile.userName || !next.bucket || !next.drafts.length || !store.current) return;
     const version = ++revision.current;
     const snapshot = { ...next, drafts: next.drafts.map(r => ({ ...r })) };
     queue.current!.enqueue(async () => {
       const error = await store.current!.saveSheet(snapshot.profile, snapshot.bucket, snapshot.drafts,
-        snapshot.catalog.filter(e => e.block === snapshot.profile.block && e.cycle === snapshot.profile.cycle).map(e => e.bucket));
+        snapshot.catalog.filter(e => e.block === snapshot.profile.block && e.cycle === snapshot.profile.cycle).map(e => e.bucket),
+        datesSelected ? sheetDates(snapshot.drafts) : undefined);
       if (version === revision.current) { validationRef.current = error; setValidation(error ?? ''); }
     }, JSON.stringify([next.profile.userId, next.profile.block, next.profile.cycle, next.bucket]));
   }
@@ -148,7 +151,7 @@ export default function CollectionScreen() {
       const profile = await store.current!.selectUser(name);
       const current = contextRef.current!;
       await reload(profile, current.catalog, profile.userId === current.profile.userId && current.profile.userName ? current.bucket : undefined);
-      setUsers(await store.current!.users()); setPanel(contextRef.current!.catalog.length ? null : 'settings');
+      setUsers(await store.current!.users()); setPanel(!current.catalog.length || await store.current!.needsCatalogReview() ? 'catalog' : null);
     });
   }
   async function navigate(bucket: string) {
@@ -182,7 +185,12 @@ export default function CollectionScreen() {
       const entries = await store.current!.replaceCatalog(result.entries, result.filename);
       const current = contextRef.current!;
       await reload(current.profile, entries, current.bucket); setSource(result.filename);
+      setImportedAt(await store.current!.setting('catalogImportedAt', ''));
+      if (panel === 'catalog') setPanel(null);
     });
+  }
+  async function continueWithLastCatalog() {
+    await run(async () => { await store.current!.useLastCatalog(); setPanel(null); });
   }
   async function selectOutput(kind: 'folder' | 'create' | 'open') {
     await run(async () => {
@@ -192,6 +200,7 @@ export default function CollectionScreen() {
       await store.current!.setSetting('outputDevice', selected);
       if (selected.kind === 'folder') await store.current!.setSetting('outputFolder', selected);
       setTarget(selected);
+      setPanel('settings');
     });
   }
   async function exportCurrent() {
@@ -201,6 +210,7 @@ export default function CollectionScreen() {
       if (!target) { setPanel('settings'); Alert.alert('Destino do CSV', 'Escolha a pasta ou o arquivo de saída. Depois toque no ícone de exportação.'); return; }
       const records = await exportDevice(store.current!, current.profile, records => exportCsv(current.profile, records, target));
       await reload(current.profile, current.catalog);
+      setPanel('catalog');
       setNotice('CSV atualizado · nova coleta');
       Alert.alert('CSV atualizado', `${exportFilename(current.profile)}\n${records.length} registros de todos os usuários deste aparelho.\n\nFormulário limpo. O histórico foi preservado. Se o destino for OneDrive, confira a sincronização no OneDrive.`);
     });
@@ -217,7 +227,7 @@ export default function CollectionScreen() {
       await queue.current!.flush();
       const current = contextRef.current!;
       const next = { ...current, drafts: changeSheetDate(current.drafts, id, date, await store.current!.all(), current.profile, current.bucket) };
-      show(next); persist(next);
+      show(next); persist(next, true);
     }, false);
   }
   function finishEdit(value: string) {
@@ -237,7 +247,7 @@ export default function CollectionScreen() {
   const blocks = [...new Map(catalog.map(e => [JSON.stringify([e.cycle, e.block]), e])).values()];
   const landscape = width > 600 && height < 600;
   const issue = saveError || validation;
-  const title = panel === 'user' ? 'Usuário' : panel === 'settings' ? 'Configurações' : panel === 'block' ? 'Bloco de cruzamento' : panel === 'bucket' ? 'Escolher balde' : panel === 'quantity' ? 'Espigas' : 'Observação';
+  const title = panel === 'user' ? 'Usuário' : panel === 'settings' ? 'Configurações' : panel === 'catalog' ? 'Cadastro deste ciclo' : panel === 'output' ? 'Destino do CSV' : panel === 'block' ? 'Bloco de cruzamento' : panel === 'bucket' ? 'Escolher balde' : panel === 'quantity' ? 'Espigas' : 'Observação';
   const available = buckets.filter(b => !edit || b.includes(edit.trim())).slice(0, 120);
 
   return <SafeAreaView style={styles.root}>
@@ -294,11 +304,11 @@ export default function CollectionScreen() {
     </View>
 
     {dateRow && <DateTimePicker value={new Date(`${drafts.find(r => r.rowId === dateRow)?.date || today()}T12:00:00`)} mode="date" minimumDate={new Date(2000, 0, 1)} maximumDate={new Date(2100, 11, 31)} onChange={(event, date) => { const id = dateRow; setDateRow(null); if (event.type === 'set' && date) void pickDate(id, today(date)); }} />}
-    <Modal visible={!!panel} transparent animationType="fade" onRequestClose={() => { if (!busy && (panel !== 'user' || profile.userName)) setPanel(null); }}>
+    <Modal visible={!!panel} transparent animationType="fade" onRequestClose={() => { if (!busy && panel !== 'catalog' && (panel !== 'user' || profile.userName)) setPanel(panel === 'output' ? 'settings' : null); }}>
       <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={styles.modalSafe}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeader}><Text style={styles.modalTitle}>{title}</Text><IconButton icon="x" label="Fechar" disabled={busy || (panel === 'user' && !profile.userName)} onPress={() => setPanel(null)} /></View>
+            <View style={styles.modalHeader}><Text style={styles.modalTitle}>{title}</Text><IconButton icon="x" label="Fechar" disabled={busy || panel === 'catalog' || (panel === 'user' && !profile.userName)} onPress={() => setPanel(panel === 'output' ? 'settings' : null)} /></View>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
               {panel === 'user' && <>
                 {users.map(u => <View key={u.userId} style={styles.userRow}>
@@ -309,18 +319,38 @@ export default function CollectionScreen() {
                 <TextInput accessibilityLabel="Nome do usuário" editable={!busy} style={styles.input} value={edit} onChangeText={setEdit} placeholder="Nome do usuário" maxLength={80} autoCapitalize="words" />
                 <Action disabled={busy || !edit.trim()} text="Usar este nome" onPress={() => void selectUser(edit)} />
               </>}
+              {panel === 'catalog' && <>
+                <Text style={styles.hint}>Selecione a lista atualizada de baldes para este ciclo. Sem acesso ao arquivo, use o último cadastro.</Text>
+                <Text style={styles.filename}>{source}</Text>
+                {!!importedAt && <Text style={styles.hint}>Importado em {new Date(importedAt).toLocaleString('pt-BR')}</Text>}
+                <Action disabled={busy} text="Selecionar arquivo atualizado" onPress={() => void importCatalog()} />
+                <Action disabled={busy || !catalog.length} text="Usar último cadastro" onPress={() => void continueWithLastCatalog()} />
+              </>}
               {panel === 'settings' && <>
-                <Text style={styles.label}>Cadastro: Nome do Bloco · Balde</Text><Text style={styles.hint}>{source}</Text>
-                <Action disabled={busy} text="Importar CSV ou Excel" onPress={() => void importCatalog()} />
-                <Text style={styles.label}>CSV único deste aparelho · todos os usuários</Text>
-                <Text style={styles.hint}>{target ? `${target.kind === 'folder' ? 'Pasta' : 'Arquivo'}: ${target.name}` : 'Destino não selecionado'}</Text>
+                <View style={styles.settingsSection}>
+                  <Text style={styles.settingsTitle}>Cadastro de baldes</Text>
+                  <Text style={styles.hint}>{source} · {catalog.length} baldes</Text>
+                  <Action disabled={busy} text="Atualizar cadastro" onPress={() => void importCatalog()} />
+                </View>
+                <View style={[styles.settingsSection, styles.settingsDivider]}>
+                  <Text style={styles.settingsTitle}>Saída CSV</Text>
+                  <Text style={styles.hint}>{target ? target.name : 'Destino não selecionado'}</Text>
+                  <Action disabled={busy} text={target ? 'Alterar destino' : 'Escolher destino'} onPress={() => setPanel('output')} />
+                </View>
+                <View style={[styles.settingsSection, styles.settingsDivider]}>
+                  <Text style={styles.settingsTitle}>Cópia dos dados</Text>
+                  <Text style={styles.hint}>O histórico permanece no aparelho após exportar.</Text>
+                  <Action disabled={busy} text="Enviar cópia dos dados" onPress={() => void sendCopy()} />
+                  <Text style={styles.hint}>Escolha OneDrive ou outro aplicativo. Enviar cópia não limpa a coleta.</Text>
+                </View>
+              </>}
+              {panel === 'output' && <>
+                <Text style={styles.hint}>O destino será lembrado neste aparelho.</Text>
                 {!!profile.userName && <Text style={styles.filename}>{exportFilename(profile)}</Text>}
                 <Action disabled={busy} text="Escolher pasta de saída" onPress={() => void selectOutput('folder')} />
                 <Action disabled={busy} text="Criar arquivo de saída" onPress={() => void selectOutput('create')} />
                 <Action disabled={busy} text="Escolher CSV existente" onPress={() => void selectOutput('open')} />
-                <Text style={styles.hint}>O destino será lembrado para todos os usuários. A gravação confirmada limpa as datas, quantidades e observações da tela.</Text>
-                <Action disabled={busy} text="Enviar cópia (OneDrive…)" onPress={() => void sendCopy()} />
-                <Text style={styles.hint}>OneDrive não aparece no seletor? Use Enviar cópia e escolha OneDrive entre os aplicativos disponíveis. Confirme o envio nele. Compartilhar não limpa o formulário, pois o app não consegue confirmar a transferência.</Text>
+                <Text style={styles.hint}>OneDrive não aparece? Use Enviar cópia dos dados nas configurações.</Text>
               </>}
               {panel === 'block' && <>
                 {!blocks.length && <Action text="Importar cadastro" onPress={() => setPanel('settings')} />}
@@ -394,4 +424,6 @@ const styles = StyleSheet.create({
   multiline: { minHeight: 100, textAlignVertical: 'top' }, largeInput: { fontSize: 30, textAlign: 'center' },
   bucketGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  settingsSection: { gap: 8 }, settingsTitle: { fontSize: 15, fontWeight: '600', color: colors.ink },
+  settingsDivider: { borderTopWidth: 1, borderColor: colors.line, paddingTop: 14 },
 });
