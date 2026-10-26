@@ -1,7 +1,7 @@
 # Wheat-Crossing-Block
 Aplicativo para coleta de espigas disponíveis no BC.
 
-Versão Android 0.3.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
+Versão Android 0.4.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
 
 [Baixar APK 0.3.0](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40155081615/artifacts/12584104042). Extraia o ZIP e instale `RegistroBC-GitHub.apk` como atualização de **Registro de BC (GitHub)**. [Instruções](docs/INSTALAR_ANDROID.md).
 
@@ -9,11 +9,11 @@ Versão Android 0.3.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. 
 
 1. Tocar no ícone de usuário e identificar o coletor pelo nome.
 2. Importar o cadastro em Configurações e escolher o bloco pelo nome no topo.
-3. Navegar pelas setas ou tocar no número para escolher um balde.
+3. Navegar pelas setas ou tocar no número para escolher um balde. O controle discreto de prioridade fica abaixo do número e usa `#b4bd00` quando ligado.
 4. Preencher até três datas por finalidade, na mesma tela, com contador `↓ número ↑`.
 5. As alterações são gravadas automaticamente no aparelho, inclusive sem internet.
 6. Tocar no ícone de exportação para atualizar o CSV no destino escolhido.
-7. Após gravação confirmada, iniciar nova rodada com datas em branco, espigas zero e observações vazias.
+7. Após gravação confirmada, iniciar nova rodada no primeiro balde do bloco, com datas em branco, espigas zero e observações vazias. A prioridade de cada balde mantém a última escolha, ligada ou desligada.
 
 O armazenamento principal do aparelho é SQLite. Cada aparelho tem um CSV acumulado `REGISTRO_BC_[ID_DO_APARELHO].csv`, com todos os seus usuários identificados na coluna `Nome do usuário`. O destino é lembrado para todos os usuários após reiniciar. A exportação reescreve o snapshot completo do aparelho, sem apagar o banco. Aparelhos diferentes geram arquivos diferentes, inclusive quando o coletor é o mesmo. Sucesso de escrita no provedor não confirma sincronização à nuvem ou importação pelo Excel. Não há servidor de sincronização entre aparelhos.
 
@@ -72,7 +72,9 @@ Cada alteração é enfileirada para gravação local em uma transação. Rascun
 
 ## CSV e destino de saída
 
-Colunas: `Nome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID;Nome do usuário`. UTF-8 com BOM, separador ponto e vírgula, datas de avaliação `DD/MM/AAAA`, criação ISO 8601 UTC e finalidade por extenso. Textos que poderiam ser executados como fórmulas no Excel recebem um apóstrofo de proteção.
+Colunas: `Nome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID;Nome do usuário;Prioridade`. UTF-8 com BOM, separador ponto e vírgula, datas de avaliação `DD/MM/AAAA`, criação ISO 8601 UTC e finalidade por extenso. Textos que poderiam ser executados como fórmulas no Excel recebem um apóstrofo de proteção.
+
+`Prioridade` contém `SIM` ou `NÃO`, conforme a última escolha do balde naquele bloco e safra interna. A escolha é compartilhada pelos usuários do aparelho, persiste após reiniciar e não é limpa nas novas rodadas. Alterá-la atualiza esse dado nas avaliações existentes do balde, mantendo IDs, quantidades, datas e autoria; as versões anteriores ficam nas revisões internas. Registros legados começam sem prioridade. Marcar apenas a prioridade, sem avaliação datada, não cria uma linha fictícia de disponibilidade. O aplicativo coleta e exporta essa informação; não recomenda cruzas.
 
 Em Configurações, escolha a pasta, ou use **Criar arquivo de saída** / **Escolher CSV existente** com o nome esperado para este aparelho. A permissão persistente é lembrada. Uma pasta escolhida na versão anterior pode ser reutilizada; arquivos por usuário exigem escolher o novo arquivo por aparelho. Os arquivos antigos não são apagados. Uma falha na escrita ou leitura de confirmação mantém os dados e o formulário.
 
@@ -80,7 +82,7 @@ O seletor Android depende dos provedores disponíveis e não representa integra�
 
 ## Excel
 
-O novo CSV tem nove colunas. O módulo inicial [excel/ImportarColetasBC.bas](excel/ImportarColetasBC.bas) foi criado para o CSV técnico de 15 colunas da versão 0.1 e **ainda não importa o novo formato**. A macro deverá verificar conflitos entre aparelhos, usuários e rodadas por bloco, balde, data e finalidade. Consulte [docs/EXCEL.md](docs/EXCEL.md). O arquivo original não foi modificado.
+O novo CSV tem dez colunas. O módulo inicial [excel/ImportarColetasBC.bas](excel/ImportarColetasBC.bas) foi criado para o CSV técnico de 15 colunas da versão 0.1 e **ainda não importa o novo formato**. A macro deverá verificar conflitos entre aparelhos, usuários e rodadas por bloco, balde, data e finalidade. Consulte [docs/EXCEL.md](docs/EXCEL.md). O arquivo original não foi modificado.
 
 ## Verificação
 

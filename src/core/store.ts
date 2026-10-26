@@ -53,6 +53,28 @@ export class Store {
   async setSetting(key: string, value: unknown): Promise<void> {
     await this.db.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', key, JSON.stringify(value));
   }
+  private priorityKey(profile: Pick<Profile, 'cycle' | 'block'>, bucket: string): string {
+    return 'priority:' + JSON.stringify([profile.cycle, profile.block, bucket]);
+  }
+  async getPriority(profile: Pick<Profile, 'cycle' | 'block'>, bucket: string): Promise<boolean> {
+    return this.setting(this.priorityKey(profile, bucket), false);
+  }
+  async setPriority(profile: Profile, bucket: string, priority: boolean): Promise<void> {
+    await this.db.withExclusiveTransactionAsync(async tx => {
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', this.priorityKey(profile, bucket), JSON.stringify(priority));
+      // Priority is the latest bucket choice, shared by collectors and independent of collection rounds.
+      const records = await tx.getAllAsync<Payload>('SELECT payload FROM evaluations');
+      for (const { payload } of records) {
+        const previous: Evaluation = JSON.parse(payload);
+        if (previous.cycle !== profile.cycle || previous.block !== profile.block || previous.bucket !== bucket
+          || (previous.priority ?? false) === priority) continue;
+        const record = { ...previous, priority, version: previous.version + 1, updated_at: this.clock() };
+        const next = JSON.stringify(record);
+        await tx.runAsync('UPDATE evaluations SET version = ?, payload = ? WHERE record_id = ?', record.version, next, record.record_id);
+        await tx.runAsync('INSERT INTO revisions(record_id,version,payload) VALUES (?,?,?)', record.record_id, record.version, next);
+      }
+    });
+  }
   async users(): Promise<Pick<Profile, 'userId' | 'userName'>[]> {
     const profile = await this.getProfile();
     const users = await this.setting<Pick<Profile, 'userId' | 'userName'>[]>('users', []);
@@ -69,7 +91,10 @@ export class Store {
     await this.db.withExclusiveTransactionAsync(async tx => {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'users', JSON.stringify(users));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'profile', JSON.stringify(next));
-      if (previous.userId !== next.userId || !previous.userName) await this.resetRound(tx, next.userId);
+      if (previous.userId !== next.userId || !previous.userName) {
+        await this.resetRound(tx, next.userId);
+        await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'activeBucket', JSON.stringify(''));
+      }
     });
     return next;
   }
@@ -91,6 +116,7 @@ export class Store {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'users', JSON.stringify(users));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'profile', JSON.stringify(next));
       await this.resetRound(tx, userId);
+      if (previous.userId === userId) await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'activeBucket', JSON.stringify(''));
     });
     return next;
   }
@@ -129,6 +155,8 @@ export class Store {
   }
   private async saveRows(tx: Database, profile: Profile, bucket: string, selected: Draft[]): Promise<number> {
     let changed = 0;
+    const setting = await tx.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', this.priorityKey(profile, bucket));
+    const priority: boolean = setting ? JSON.parse(setting.value) : false;
       for (const draft of selected) {
         const base = { cycle: profile.cycle, block: profile.block, bucket, date: draft.date, purpose: draft.purpose };
         const round = draft.roundId ?? '';
@@ -138,10 +166,10 @@ export class Store {
         const previous: Evaluation | null = existing ? JSON.parse(existing.payload) : null;
         const quantity = Number(draft.quantity.trim());
         const observation = draft.observation.trim();
-        if (previous && previous.quantity === quantity && previous.observation === observation) continue;
+        if (previous && previous.quantity === quantity && previous.observation === observation && (previous.priority ?? false) === priority) continue;
         const now = this.clock();
         const record: Evaluation = { ...base, schema_version: '1', record_id: previous?.record_id ?? this.uuid(),
-          version: (previous?.version ?? 0) + 1, quantity, observation, user_id: profile.userId,
+          version: (previous?.version ?? 0) + 1, quantity, observation, priority, user_id: profile.userId,
           user_name: profile.userName, device_id: profile.deviceId, created_at: previous?.created_at ?? now, updated_at: now, round_id: round };
         const payload = JSON.stringify(record);
         await tx.runAsync('INSERT INTO evaluations(record_id,natural_key,version,payload) VALUES (?,?,?,?) ON CONFLICT(natural_key) DO UPDATE SET version=excluded.version,payload=excluded.payload', record.record_id, key, record.version, payload);
@@ -200,6 +228,7 @@ export class Store {
         throw new Error('O CSV foi gravado, mas há alterações posteriores. O formulário foi preservado; exporte novamente.');
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'export', JSON.stringify({ at: this.clock(), versions }));
       for (const user of users) await this.resetRound(tx, user.userId);
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'activeBucket', JSON.stringify(''));
     });
   }
   async exportState(records: Evaluation[]): Promise<{ at: string | null; pending: number }> {

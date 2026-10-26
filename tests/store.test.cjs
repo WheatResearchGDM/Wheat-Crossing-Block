@@ -247,3 +247,71 @@ test('uma correção posterior à geração do CSV continua pendente', async () 
   await store.markExport(snapshot); assert.equal((await store.exportState(await store.all())).pending, 1);
   await store.markExport(await store.all()); assert.equal((await store.exportState(await store.all())).pending, 0); db.raw.close();
 });
+
+test('prioridade mantém a última escolha por bloco e balde após nova coleta e reinício', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bc-priority-'));
+  try {
+    const filename = join(directory, 'bc.db'); const first = await make(new Adapter(filename));
+    await first.store.setProfile(profile);
+    assert.equal(await first.store.getPriority(profile, '1'), false);
+    await first.store.setPriority(profile, '1', true);
+    await first.store.setPriority(profile, '2', true);
+    await first.store.setPriority(profile, '2', false);
+    assert.equal(await first.store.getPriority({ ...profile, block: 'Outro' }, '1'), false);
+    assert.equal(await first.store.getPriority({ ...profile, cycle: '2027' }, '1'), false);
+    const sheet = await first.store.loadSheet(profile, '2'); sheet[0].date = '2026-10-26'; sheet[0].quantity = '8';
+    await first.store.saveSheet(profile, '2', sheet, ['1', '2']);
+    assert.equal(await first.store.setting('activeBucket', ''), '2');
+    await first.store.completeExport(await first.store.all());
+    assert.equal(await first.store.setting('activeBucket', ''), '');
+    assert.ok((await first.store.loadSheet(profile, '1')).every(r => r.date === '' && r.quantity === '0' && r.observation === ''));
+    first.db.raw.close();
+    const second = await make(new Adapter(filename));
+    assert.equal(await second.store.getPriority(profile, '1'), true);
+    assert.equal(await second.store.getPriority(profile, '2'), false);
+    assert.equal(await second.store.setting('activeBucket', ''), '');
+    const other = await second.store.selectUser('Maria');
+    assert.equal(await second.store.getPriority(other, '1'), true);
+    assert.equal(await second.store.getPriority(other, '2'), false);
+    const next = await second.store.loadSheet(other, '1'); next[0].date = '2026-10-26';
+    await second.store.saveSheet(other, '1', next, ['1', '2']);
+    assert.equal((await second.store.all()).find(r => r.user_id === other.userId).priority, true);
+    second.db.raw.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('CSV acrescenta somente Prioridade e usa a última escolha para todas as linhas do balde', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  await store.save(profile, '1', [draft(), draft({ purpose: 'POLI' })], ['1']);
+  const legacy = (await store.all())[0]; delete legacy.priority;
+  assert.match(toCsv([legacy]).split('\r\n')[1], /;"NÃO"$/);
+  const before = await store.all();
+  await store.setPriority(profile, '1', true);
+  const prioritized = await store.all();
+  assert.ok(prioritized.every(r => r.priority === true && r.version === 2));
+  assert.deepEqual(prioritized.map(r => r.record_id), before.map(r => r.record_id));
+  assert.deepEqual(prioritized.map(r => r.created_at), before.map(r => r.created_at));
+  const csv = toCsv(prioritized).split('\r\n');
+  assert.equal(csv[0], '\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Data de criação;Device ID;Nome do usuário;Prioridade');
+  assert.ok(csv.slice(1, -1).every(row => row.endsWith(';"SIM"') && row.split(';').length === 10));
+  await assert.rejects(store.completeExport(before), /alterações posteriores/);
+  await store.setPriority(profile, '1', true);
+  assert.ok((await store.all()).every(r => r.version === 2));
+  await store.completeExport(await store.all());
+  await store.setPriority(profile, '1', false);
+  assert.ok((await store.all()).every(r => r.priority === false && r.version === 3));
+  assert.ok(toCsv(await store.all()).split('\r\n').slice(1,-1).every(row => row.endsWith(';"NÃO"')));
+  assert.equal((await db.getAllAsync('SELECT * FROM revisions')).length, 6);
+  db.raw.close();
+});
+
+test('falha ao revisar prioridade reverte tanto o botão quanto as avaliações', async () => {
+  const { db, store } = await make();
+  await store.save(profile, '1', [draft(), draft({ purpose: 'POLI' })], ['1']);
+  const before = await store.all();
+  await db.execAsync("CREATE TRIGGER fail_priority BEFORE INSERT ON revisions WHEN NEW.version = 2 BEGIN SELECT RAISE(ABORT, 'falha de escrita'); END;");
+  await assert.rejects(store.setPriority(profile, '1', true), /falha de escrita/);
+  assert.equal(await store.getPriority(profile, '1'), false);
+  assert.deepEqual(await store.all(), before);
+  db.raw.close();
+});

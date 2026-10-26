@@ -16,15 +16,15 @@ import { selectCatalog } from '../services/catalog-import';
 
 const colors = { ink: '#123047', muted: '#597080', line: '#D6E0E5', field: '#F4F7F8', paper: '#FFFFFF', green: '#35624C', red: '#AA3030' };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
-type Context = { profile: Profile; catalog: CatalogEntry[]; bucket: string; drafts: Draft[] };
+type Context = { profile: Profile; catalog: CatalogEntry[]; bucket: string; drafts: Draft[]; priority: boolean };
 type Panel = 'user' | 'settings' | 'block' | 'bucket' | 'quantity' | 'observation' | null;
 type User = Pick<Profile, 'userId' | 'userName'>;
 type IconName = React.ComponentProps<typeof Feather>['name'];
 
-function IconButton({ icon, label, onPress, disabled = false }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean }) {
+function IconButton({ icon, label, onPress, disabled = false, large = false }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean; large?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled}
-    style={({ pressed }) => [styles.iconButton, (pressed || disabled) && { opacity: 0.4 }]} onPress={onPress}>
-    <Feather name={icon} size={23} color={colors.ink} />
+    style={({ pressed }) => [styles.iconButton, large && styles.bucketArrow, (pressed || disabled) && { opacity: 0.4 }]} onPress={onPress}>
+    <Feather name={icon} size={large ? 36 : 23} color={colors.ink} />
   </Pressable>;
 }
 function Action({ text, onPress, disabled = false }: { text: string; onPress: () => void; disabled?: boolean }) {
@@ -69,8 +69,10 @@ export default function CollectionScreen() {
     const bucket = selected && buckets.includes(selected) ? selected : buckets[0] ?? '';
     await store.current!.setProfile(nextProfile);
     const drafts = bucket ? await store.current!.loadSheet(nextProfile, bucket) : [];
+    const priority = bucket ? await store.current!.getPriority(nextProfile, bucket) : false;
+    await store.current!.setSetting('activeBucket', bucket);
     validationRef.current = null; setValidation('');
-    show({ profile: nextProfile, catalog, bucket, drafts });
+    show({ profile: nextProfile, catalog, bucket, drafts, priority });
     setTarget(await store.current!.setting<OutputTarget | null>('outputDevice', null)
       ?? await store.current!.setting<OutputTarget | null>('outputFolder', null));
   }, [show]);
@@ -144,7 +146,8 @@ export default function CollectionScreen() {
   async function selectUser(name: string) {
     await run(async () => {
       const profile = await store.current!.selectUser(name);
-      await reload(profile, contextRef.current!.catalog, contextRef.current!.bucket);
+      const current = contextRef.current!;
+      await reload(profile, current.catalog, profile.userId === current.profile.userId && current.profile.userName ? current.bucket : undefined);
       setUsers(await store.current!.users()); setPanel(contextRef.current!.catalog.length ? null : 'settings');
     });
   }
@@ -153,13 +156,22 @@ export default function CollectionScreen() {
       const current = contextRef.current!; await reload(current.profile, current.catalog, bucket); setPanel(null);
     });
   }
+  async function togglePriority() {
+    await run(async () => {
+      await queue.current!.flush();
+      const current = contextRef.current!;
+      const priority = !current.priority;
+      await store.current!.setPriority(current.profile, current.bucket, priority);
+      show({ ...current, priority });
+    }, false);
+  }
   function deleteUser(user: User) {
     Alert.alert('Excluir usuário?', `${user.userName} será removido da lista. As coletas anteriores continuarão no aparelho e no CSV.`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Excluir', style: 'destructive', onPress: () => void run(async () => {
         const current = contextRef.current!;
         const profile = await store.current!.deleteUser(user.userId);
-        await reload(profile, current.catalog, current.bucket);
+        await reload(profile, current.catalog, profile.userId === current.profile.userId ? current.bucket : undefined);
         setUsers(await store.current!.users()); setEdit(''); setPanel('user');
       }) },
     ]);
@@ -188,7 +200,7 @@ export default function CollectionScreen() {
       if (!current.profile.userName) { openPanel('user'); return; }
       if (!target) { setPanel('settings'); Alert.alert('Destino do CSV', 'Escolha a pasta ou o arquivo de saída. Depois toque no ícone de exportação.'); return; }
       const records = await exportDevice(store.current!, current.profile, records => exportCsv(current.profile, records, target));
-      await reload(current.profile, current.catalog, current.bucket);
+      await reload(current.profile, current.catalog);
       setNotice('CSV atualizado · nova coleta');
       Alert.alert('CSV atualizado', `${exportFilename(current.profile)}\n${records.length} registros de todos os usuários deste aparelho.\n\nFormulário limpo. O histórico foi preservado. Se o destino for OneDrive, confira a sincronização no OneDrive.`);
     });
@@ -219,7 +231,7 @@ export default function CollectionScreen() {
 
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator size="large" color={colors.ink} /></SafeAreaView>;
   if (fatal || !context) return <SafeAreaView style={styles.center}><Text>{fatal || 'Não foi possível abrir o aplicativo.'}</Text><Action text="Tentar novamente" onPress={() => { setFatal(''); setLoading(true); setRetry(r => r + 1); }} /></SafeAreaView>;
-  const { profile, catalog, bucket, drafts } = context;
+  const { profile, catalog, bucket, drafts, priority } = context;
   const buckets = catalog.filter(e => e.block === profile.block && e.cycle === profile.cycle).map(e => e.bucket);
   const bucketIndex = buckets.indexOf(bucket);
   const blocks = [...new Map(catalog.map(e => [JSON.stringify([e.cycle, e.block]), e])).values()];
@@ -239,12 +251,19 @@ export default function CollectionScreen() {
         <IconButton icon="upload" label="Exportar CSV" disabled={busy} onPress={() => void exportCurrent()} />
       </View>
       <View style={styles.bucketNav}>
-        <IconButton icon="chevron-left" label="Balde anterior" disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} />
+        <IconButton icon="chevron-left" large label="Balde anterior" disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} />
         <Pressable accessibilityRole="button" accessibilityLabel={`Balde ${bucket || 'não selecionado'}. Escolher balde`} disabled={busy} style={styles.bucketChoice} onPress={() => openPanel('bucket')}>
           <Text style={styles.bucketLabel}>BALDE</Text><Text maxFontSizeMultiplier={1.3} style={styles.bucketNumber}>{bucket || '—'}</Text>
         </Pressable>
-        <IconButton icon="chevron-right" label="Próximo balde" disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} />
+        <IconButton icon="chevron-right" large label="Próximo balde" disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} />
       </View>
+      {!!bucket && <Pressable accessibilityRole="switch" accessibilityLabel={`Prioridade do balde ${bucket}`}
+        accessibilityState={{ checked: priority, disabled: busy }} disabled={busy} onPress={() => void togglePriority()}
+        style={({ pressed }) => [styles.priorityControl, (pressed || busy) && { opacity: 0.4 }]}>
+        <Text style={styles.priorityText}>Prioridade</Text>
+        <View style={[styles.priorityTrack, priority && styles.priorityOn]}><View style={styles.priorityKnob} /></View>
+        <Text style={styles.priorityState}>{priority ? 'Ligado' : 'Desligado'}</Text>
+      </Pressable>}
       {drafts.length ? <View style={[styles.groups, landscape && styles.horizontal]}>
         {(['EMASC', 'POLI'] as const).map(purpose => <View key={purpose} style={styles.group}>
           <Text style={styles.groupTitle}>{purpose === 'EMASC' ? 'Emasculação' : 'Polinização'}</Text>
@@ -342,9 +361,15 @@ const styles = StyleSheet.create({
   iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   block: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', gap: 3, alignItems: 'center', justifyContent: 'center' },
   blockName: { flexShrink: 1, color: colors.ink, fontWeight: '700', fontSize: 15 },
-  bucketNav: { height: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
-  bucketChoice: { flex: 1, alignItems: 'center', justifyContent: 'center' }, bucketLabel: { fontSize: 11, color: colors.muted, letterSpacing: 1 },
+  bucketNav: { height: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 2 },
+  bucketArrow: { width: 56, height: 56 },
+  bucketChoice: { flexShrink: 1, minWidth: 70, alignItems: 'center', justifyContent: 'center' }, bucketLabel: { fontSize: 11, color: colors.muted, letterSpacing: 1 },
   bucketNumber: { fontSize: 35, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] },
+  priorityControl: { minHeight: 44, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  priorityText: { fontSize: 12, color: colors.ink }, priorityState: { fontSize: 11, color: colors.ink, minWidth: 54 },
+  priorityTrack: { width: 36, height: 20, borderRadius: 12, borderWidth: 1, borderColor: colors.ink, backgroundColor: colors.paper, padding: 2, justifyContent: 'center', alignItems: 'flex-start' },
+  priorityOn: { backgroundColor: '#b4bd00', alignItems: 'flex-end' },
+  priorityKnob: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.ink },
   groups: { flex: 1, gap: 12 }, horizontal: { flexDirection: 'row' },
   group: { flex: 1, borderTopWidth: 1, borderColor: colors.line, paddingTop: 8, gap: 5 },
   groupTitle: { fontSize: 17, fontWeight: '700', color: colors.ink, marginBottom: 2 },

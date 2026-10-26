@@ -3,11 +3,11 @@ export type Profile = { userId: string; userName: string; deviceId: string; cycl
 export type Evaluation = {
   schema_version: '1'; record_id: string; version: number; cycle: string; block: string;
   bucket: string; date: string; purpose: Purpose; quantity: number; observation: string;
-  user_id: string; user_name: string; device_id: string; created_at: string; updated_at: string; round_id?: string;
+  user_id: string; user_name: string; device_id: string; created_at: string; updated_at: string; round_id?: string; priority?: boolean;
 };
 export type Draft = { rowId: string; date: string; quantity: string; observation: string; purpose: Purpose; roundId?: string };
 export type OutputTarget = { kind: 'folder' | 'file'; uri: string; name: string; filename?: string };
-export const OUTPUT_HEADERS = ['Nome do Bloco', 'Balde', 'Data', 'Propósito', 'Disponibilidade', 'Observação', 'Data de criação', 'Device ID', 'Nome do usuário'] as const;
+export const OUTPUT_HEADERS = ['Nome do Bloco', 'Balde', 'Data', 'Propósito', 'Disponibilidade', 'Observação', 'Data de criação', 'Device ID', 'Nome do usuário', 'Prioridade'] as const;
 export const HEADERS = ['schema_version', 'record_id', 'version', 'cycle', 'block', 'bucket', 'date',
   'purpose', 'quantity', 'observation', 'user_id', 'user_name', 'device_id', 'created_at', 'updated_at'] as const;
 export const MAX_QUANTITY = 100000;
@@ -61,7 +61,7 @@ export function toCsv(records: Evaluation[]): string {
   return '\ufeff' + [OUTPUT_HEADERS.join(';'), ...[...records].sort((a, b) =>
     a.block.localeCompare(b.block) || Number(a.bucket) - Number(b.bucket) || a.date.localeCompare(b.date) || a.purpose.localeCompare(b.purpose))
     .map(row => [row.block, row.bucket, displayDate(row.date), row.purpose === 'EMASC' ? 'Emasculação' : 'Polinização',
-      row.quantity, row.observation, row.created_at, row.device_id, row.user_name].map(quote).join(';'))].join('\r\n') + '\r\n';
+      row.quantity, row.observation, row.created_at, row.device_id, row.user_name, row.priority ? 'SIM' : 'NÃO'].map(quote).join(';'))].join('\r\n') + '\r\n';
 }
 export function exportFilename(profile: Profile): string {
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(profile.deviceId)) throw new Error('Identificador do aparelho inválido.');
