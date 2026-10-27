@@ -141,16 +141,22 @@ export class Store {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalog', JSON.stringify(next));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogSource', JSON.stringify(filename));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogImportedAt', JSON.stringify(this.clock()));
-      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogReviewPending', JSON.stringify(false));
     });
     return next;
   }
-  async needsCatalogReview(): Promise<boolean> {
-    return this.setting('catalogReviewPending', true);
-  }
-  async useLastCatalog(): Promise<void> {
-    if (!(await this.getCatalog()).length) throw new Error('Importe um cadastro de baldes antes de continuar.');
-    await this.setSetting('catalogReviewPending', false);
+  async resetBlock(): Promise<Profile> {
+    const profile = { ...await this.getProfile(), cycle: '', block: '' };
+    const users = await this.users();
+    await this.db.withExclusiveTransactionAsync(async tx => {
+      await tx.runAsync('DELETE FROM revisions');
+      await tx.runAsync('DELETE FROM evaluations');
+      await tx.runAsync('DELETE FROM settings');
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'profile', JSON.stringify(profile));
+      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'users', JSON.stringify(users));
+      // New round IDs reject delayed drafts from the block that was explicitly cleared.
+      for (const id of new Set([profile.userId, ...users.map(user => user.userId)])) await this.resetRound(tx, id);
+    });
+    return profile;
   }
   async all(): Promise<Evaluation[]> {
     return (await this.db.getAllAsync<Payload>('SELECT payload FROM evaluations')).map(r => JSON.parse(r.payload));
@@ -239,12 +245,12 @@ export class Store {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'export', JSON.stringify({ at: this.clock(), versions }));
       for (const user of users) await this.resetRound(tx, user.userId);
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'activeBucket', JSON.stringify(''));
-      await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogReviewPending', JSON.stringify(true));
     });
   }
-  async exportState(records: Evaluation[]): Promise<{ at: string | null; pending: number }> {
+  async exportState(records: Evaluation[]): Promise<{ at: string | null; pending: number; newRecords: number }> {
     const state = await this.db.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', 'export');
     const parsed = state ? JSON.parse(state.value) : { at: null, versions: {} };
-    return { at: parsed.at, pending: records.filter(r => parsed.versions[r.record_id] !== r.version).length };
+    return { at: parsed.at, pending: records.filter(r => parsed.versions[r.record_id] !== r.version).length,
+      newRecords: records.filter(r => !Object.hasOwn(parsed.versions, r.record_id)).length };
   }
 }

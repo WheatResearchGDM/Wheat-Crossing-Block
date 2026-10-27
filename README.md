@@ -1,14 +1,14 @@
 # Wheat-Crossing-Block
 Aplicativo para coleta de espigas disponíveis no BC.
 
-Versão Android 0.5.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
+Versão Android 0.6.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
 
 [Baixar APK 0.5.0](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40382133395/artifacts/12679722866). Extraia o ZIP e instale `RegistroBC-GitHub.apk` como atualização de **Registro de BC (GitHub)**. [Instruções](docs/INSTALAR_ANDROID.md).
 
 ## Fluxo implementado
 
 1. Tocar no ícone de usuário e identificar o coletor pelo nome.
-2. No início de cada ciclo, selecionar o cadastro atualizado de baldes ou usar o último cadastro como alternativa offline. Escolher o bloco pelo nome no topo.
+2. Em Configurações → Importar / atualizar baldes, selecionar o cadastro inicial ou atualizá-lo quando desejar. Exportar não solicita uma nova importação. Escolher o bloco pelo nome no topo.
 3. Navegar pelas setas ou tocar no número para escolher um balde. O controle discreto de prioridade fica abaixo do número e usa `#b4bd00` quando ligado.
 4. Selecionar até três datas por finalidade no início da coleta; os campos de data vazios dos próximos baldes recebem as últimas datas selecionadas. Avaliações existentes são preservadas. Usar o contador `↓ número ↑`.
 5. As alterações são gravadas automaticamente no aparelho, inclusive sem internet.
@@ -60,17 +60,25 @@ BC_DUPLO_KX26;101
 - Limites: arquivo até 5 MB e 10.000 linhas de dados. Arquivos inválidos são rejeitados antes da incorporação.
 - O mesmo número pode existir em diferentes blocos. Repetições do mesmo vínculo são ignoradas. A última importação substitui a lista de navegação; as coletas dos catálogos anteriores permanecem no aparelho e no CSV.
 
-O cadastro funciona offline após a importação. Para alterá-lo, importe o arquivo atualizado.
+O cadastro funciona offline após a importação. Para alterá-lo, use Configurações → Importar / atualizar baldes. A nova lista substitui a navegação, inclusive removendo baldes ausentes no arquivo, sem apagar avaliações anteriores. Não há solicitação de cadastro ao exportar nem ao iniciar outra coleta com um cadastro existente.
 
 ## Regras da coleta
 
 Uma avaliação por rodada, coletor, bloco, balde, data e finalidade (a safra legada permanece apenas internamente). Repetir o salvamento sem mudar os dados na mesma rodada não cria cópia. Corrigir quantidade ou observação conserva o identificador e incrementa a versão; o banco mantém as revisões. Recolher na mesma data após iniciar outra rodada gera uma nova avaliação, preservando a anterior. Quantidades vão de zero a 100.000. Linhas sem data e com zero/sem observação não são exportadas.
 
-As últimas datas selecionadas preenchem os campos vazios dos próximos baldes, inclusive baldes visitados antes de escolher as datas. Visitar uma avaliação antiga não altera essas sugestões. Trocar de usuário preserva a coleta de cada usuário e permite retomá-la. Somente exportar com sucesso limpa as seis linhas: datas em branco, espigas zero e observações vazias. Essa limpeza vale para os baldes da nova rodada e persiste após reiniciar. Selecionar outra data mantém a quantidade e a observação digitadas, ou reabre a avaliação dessa data quando existente na rodada atual. Contagens de rodadas anteriores não preenchem a tela. O histórico permanece no banco e no CSV. Não há exclusão de avaliações. A lixeira no pop-up de usuários exclui apenas o nome da lista, com confirmação, preservando suas coletas. Excluir o usuário ativo exige nova identificação.
+As últimas datas selecionadas preenchem os campos vazios dos próximos baldes, inclusive baldes visitados antes de escolher as datas. Visitar uma avaliação antiga não altera essas sugestões. Trocar de usuário preserva a coleta de cada usuário e permite retomá-la. Somente exportar com sucesso limpa as seis linhas: datas em branco, espigas zero e observações vazias. Essa limpeza vale para os baldes da nova rodada e persiste após reiniciar. Selecionar outra data mantém a quantidade e a observação digitadas, ou reabre a avaliação dessa data quando existente na rodada atual. Contagens de rodadas anteriores não preenchem a tela. O histórico permanece no banco e no CSV. A exclusão completa de avaliações e revisões só ocorre ao confirmar Iniciar novo bloco de cruzamento. A lixeira no pop-up de usuários exclui apenas o nome da lista, com confirmação, preservando suas coletas. Excluir o usuário ativo exige nova identificação.
 
 Cada alteração é enfileirada para gravação local em uma transação. Rascunhos incompletos também são persistidos e recuperados; campos inválidos impedem avançar/exportar até correção. A navegação aguarda a fila de gravação. O rodapé informa gravação ou falha; não há botão de salvar nem histórico. Como em qualquer aplicativo, encerrar à força durante uma escrita ou perder o aparelho pode impedir recuperar o último evento ainda em andamento. Não desinstale nem limpe os dados sem exportar e conferir a cópia no computador.
 
+## Iniciar outro bloco de cruzamento
+
+Configurações → Iniciar novo bloco de cruzamento apresenta o aviso de limpeza e exige **Limpar e iniciar**. Cancelar ou fechar o aviso não altera os dados. A confirmação apaga coletas de todos os usuários, revisões, prioridades, rascunhos, sugestões de datas, cadastro, metadados de exportação, locais de entrada/saída e cópias internas do CSV/cache. A identidade do aparelho e a lista de coletores permanecem. O usuário deve importar outro cadastro e escolher um novo destino.
+
+O arquivo original de cadastro, pastas externas e CSVs já exportados não são excluídos. Não há backup automático da limpeza. Falha na remoção dos arquivos internos impede apagar o banco; falha na transação de limpeza preserva as avaliações no banco. A fila de gravação é drenada antes da limpeza, e novas rodadas recusam rascunhos atrasados do bloco anterior.
+
 ## CSV e destino de saída
+
+Após exportar com confirmação de escrita, o pop-up informa **Total de registros no arquivo** e **Novos desde a última exportação**, e pede conferir a sincronização no OneDrive. Novos são IDs que não estavam na última exportação confirmada; correções, alterações de prioridade e reenvios não aumentam esse número. A primeira exportação de um bloco conta todas as avaliações como novas. Falhas ou envio por compartilhamento não avançam a contagem.
 
 Colunas: `Nome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Prioridade;Nome do usuário;Data de criação;Device ID`. UTF-8 com BOM, separador ponto e vírgula, datas de avaliação `DD/MM/AAAA`, criação ISO 8601 UTC e finalidade por extenso. Textos que poderiam ser executados como fórmulas no Excel recebem um apóstrofo de proteção.
 
@@ -80,7 +88,7 @@ Em Configurações, use **Escolher destino** / **Alterar destino** para escolher
 
 O seletor Android depende dos provedores disponíveis e não representa integração direta com a conta Microsoft. Se o OneDrive não aparecer, use **Enviar cópia dos dados**, escolha o OneDrive entre os aplicativos disponíveis e confirme o envio nele. Compartilhar não confirma recebimento, não limpa campos e não marca registros como exportados. Você pode exportar para uma pasta local primeiro (gravação confirmada, tela limpa) e depois enviar uma cópia. A pasta escolhida dentro do OneDrive nesse caminho é controlada pelo próprio OneDrive e não pode ser lembrada pelo app de coleta.
 
-O banco interno mantém todas as avaliações salvas e suas revisões após exportar. Antes de cada exportação ou envio de cópia, o app também grava um CSV acumulado interno, substituindo a cópia anterior. É possível gerar novamente o CSV acumulado a partir do banco com **Enviar cópia dos dados**. Não há restauração de revisões pela interface nem backup externo automático: perder o aparelho, desinstalar ou limpar os dados pode remover o armazenamento interno.
+O banco interno mantém todas as avaliações salvas e suas revisões após exportar, até uma limpeza explícita para novo bloco. Antes de cada exportação ou envio de cópia, o app também grava um CSV acumulado interno, substituindo a cópia anterior. É possível gerar novamente o CSV acumulado a partir do banco com **Enviar cópia dos dados**. Não há restauração de revisões pela interface nem backup externo automático: perder o aparelho, desinstalar ou limpar os dados pode remover o armazenamento interno.
 
 ## Excel
 

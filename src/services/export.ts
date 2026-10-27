@@ -40,3 +40,11 @@ export async function shareCsv(profile: Profile, records: Evaluation[]): Promise
   await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle: 'Enviar CSV do aparelho', UTI: 'public.comma-separated-values-text' });
   // Android does not confirm receipt/upload. Never mark exported or reset forms here.
 }
+
+export async function clearInternalCollectionFiles(): Promise<void> {
+  // These are private app paths. Never delete a provider URI or any external input/output folder.
+  const exports = new Directory(Paths.document, 'exportacoes');
+  if (exports.exists) exports.delete();
+  const cache = new Directory(Paths.cache);
+  if (cache.exists) for (const entry of cache.list()) entry.delete();
+}

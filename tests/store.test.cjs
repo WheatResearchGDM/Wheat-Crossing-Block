@@ -363,27 +363,111 @@ test('datas da última seleção e contagens sobrevivem ao reinício e só limpa
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test('cadastro é revisto a cada ciclo, com alternativa offline e atualização sem apagar dados', async () => {
+test('cadastro é atualizado manualmente sem apagar dados ou exigir seleção após exportar', async () => {
   const { db, store } = await make(); await store.setProfile(profile);
-  assert.equal(await store.needsCatalogReview(), true);
-  await assert.rejects(store.useLastCatalog(), /Importe um cadastro/);
   await store.replaceCatalog([{ cycle: '2026', block: 'Teste', bucket: '1' }], 'primeiro.xlsx');
-  assert.equal(await store.needsCatalogReview(), false);
   assert.ok(await store.setting('catalogImportedAt', ''));
   await store.setPriority(profile, '1', true);
   await store.save(profile, '1', [draft()], ['1']);
   const records = await store.all();
   await assert.rejects(store.replaceCatalog([], 'vazio.xlsx'));
   assert.equal(await store.setting('catalogSource', ''), 'primeiro.xlsx');
-  await store.completeExport(records); assert.equal(await store.needsCatalogReview(), true);
-  await store.useLastCatalog(); assert.equal(await store.needsCatalogReview(), false);
-  await store.completeExport(records); assert.equal(await store.needsCatalogReview(), true);
+  await store.completeExport(records); assert.equal(await store.setting('catalogReviewPending', null), null);
+  await store.completeExport(records); assert.equal(await store.setting('catalogReviewPending', null), null);
   await store.replaceCatalog([{ cycle: '2026', block: 'Teste', bucket: '2' }], 'atualizado.xlsx');
-  assert.equal(await store.needsCatalogReview(), false);
   assert.deepEqual((await store.getCatalog()).map(e => e.bucket), ['2']);
   assert.deepEqual(await store.all(), records);
   assert.equal(await store.getPriority(profile, '1'), true);
   assert.equal(await store.setting('catalogSource', ''), 'atualizado.xlsx');
   assert.equal(await store.setting('activeBucket', ''), '');
+  db.raw.close();
+});
+
+
+test('resumo conta novos IDs desde a última exportação confirmada, sem contar correções ou reenvios', async () => {
+  const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
+  const { db, store } = await make(); await store.setProfile(profile);
+  await store.save(profile, '1', [draft(), draft({ purpose: 'POLI' })], ['1', '2']);
+  assert.deepEqual(await exportDevice(store, profile, async () => {}), { total: 2, newRecords: 2 });
+  assert.deepEqual(await exportDevice(store, profile, async () => {}), { total: 2, newRecords: 0 });
+  await store.save(profile, '1', [draft({ quantity: '27' })], ['1', '2']);
+  assert.equal((await store.exportState(await store.all())).pending, 1);
+  assert.deepEqual(await exportDevice(store, profile, async () => {}), { total: 2, newRecords: 0 });
+  const other = await store.selectUser('Maria');
+  await store.save(other, '2', [draft({ quantity: '4' })], ['1', '2']);
+  await assert.rejects(exportDevice(store, other, async () => { throw new Error('Falha de escrita'); }), /Falha de escrita/);
+  assert.equal((await store.exportState(await store.all())).newRecords, 1);
+  assert.deepEqual(await exportDevice(store, other, async () => {}), { total: 3, newRecords: 1 });
+  assert.equal((await store.exportState(await store.all())).newRecords, 0);
+  db.raw.close();
+});
+
+test('novo bloco limpa dados de todos os usuários, prioridades e destinos e persiste após reabrir', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bc-new-block-'));
+  try {
+    const filename = join(directory, 'bc.db'); const first = await make(new Adapter(filename));
+    await first.store.setProfile(profile);
+    await first.store.replaceCatalog([{ cycle: '2026', block: 'Teste', bucket: '1' }], 'cadastro-antigo.xlsx');
+    await first.store.setPriority(profile, '1', true);
+    const sheet = await first.store.loadSheet(profile, '1'); sheet[0].date = '2026-10-24'; sheet[0].quantity = '17';
+    await first.store.saveSheet(profile, '1', sheet, ['1']);
+    const other = await first.store.selectUser('Maria');
+    await first.store.save(other, '1', [draft({ observation: 'Dado do bloco anterior' })], ['1']);
+    await first.store.setSetting('outputDevice', { kind: 'file', uri: 'content://provedor/antigo.csv' });
+    await first.store.setSetting('outputFolder', { kind: 'folder', uri: 'content://provedor/pasta' });
+    await first.store.markExport(await first.store.all());
+    const users = await first.store.users();
+    const clean = await first.store.resetBlock();
+    assert.equal(clean.deviceId, profile.deviceId); assert.equal(clean.userId, other.userId); assert.equal(clean.userName, 'Maria');
+    assert.equal(clean.block, ''); assert.equal(clean.cycle, '');
+    assert.deepEqual(await first.store.all(), []);
+    assert.deepEqual(await first.db.getAllAsync('SELECT * FROM revisions'), []);
+    assert.deepEqual(await first.store.getCatalog(), []);
+    assert.deepEqual(await first.store.users(), users);
+    for (const key of ['outputDevice', 'outputFolder', 'catalogSource', 'catalogImportedAt', 'export', 'activeBucket'])
+      assert.equal(await first.store.setting(key, null), null);
+    assert.equal(await first.store.getPriority(profile, '1'), false);
+    await assert.rejects(first.store.saveSheet(profile, '1', sheet, ['1']), /rodada/);
+    first.db.raw.close();
+    const second = await make(new Adapter(filename));
+    assert.deepEqual(await second.store.getProfile(), clean);
+    assert.deepEqual(await second.store.all(), []);
+    for (const user of users) assert.ok((await second.store.loadSheet({ ...profile, ...user }, '1')).every(row => row.date === '' && row.quantity === '0' && row.observation === ''));
+    const catalog = await second.store.replaceCatalog([{ cycle: '', block: 'Novo BC', bucket: '101' }], 'novo.xlsx');
+    const nextProfile = { ...clean, block: catalog[0].block };
+    await second.store.setProfile(nextProfile);
+    const next = await second.store.loadSheet(nextProfile, '101'); next[0].date = '2026-10-27'; next[0].quantity = '3';
+    await second.store.saveSheet(nextProfile, '101', next, ['101']);
+    const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
+    assert.deepEqual(await exportDevice(second.store, nextProfile, async () => {}), { total: 1, newRecords: 1 });
+    assert.ok(!toCsv(await second.store.all()).includes('Dado do bloco anterior'));
+    second.db.raw.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('falha na limpeza do banco reverte a exclusão de histórico, coletas e destinos', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  await store.save(profile, '1', [draft()], ['1']);
+  await store.setSetting('outputDevice', { uri: 'content://original.csv' });
+  const before = await store.all();
+  await db.execAsync("CREATE TRIGGER fail_clear BEFORE DELETE ON evaluations BEGIN SELECT RAISE(ABORT, 'falha ao limpar'); END;");
+  await assert.rejects(store.resetBlock(), /falha ao limpar/);
+  assert.deepEqual(await store.all(), before);
+  assert.equal((await db.getAllAsync('SELECT * FROM revisions')).length, 1);
+  assert.deepEqual(await store.getProfile(), profile);
+  assert.equal((await store.setting('outputDevice', null)).uri, 'content://original.csv');
+  db.raw.close();
+});
+
+test('falha ao limpar arquivos internos não apaga o banco; sucesso permite iniciar outro bloco', async () => {
+  const { startNewBlock } = require(join(process.env.BC_TEST_BUILD, 'block-reset.js'));
+  const { db, store } = await make(); await store.setProfile(profile);
+  await store.save(profile, '1', [draft()], ['1']);
+  const before = await store.all();
+  await assert.rejects(startNewBlock(store, async () => { throw new Error('Arquivo em uso'); }), /Arquivo em uso/);
+  assert.deepEqual(await store.all(), before);
+  let cleaned = false;
+  await startNewBlock(store, async () => { cleaned = true; });
+  assert.equal(cleaned, true); assert.deepEqual(await store.all(), []);
   db.raw.close();
 });

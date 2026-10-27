@@ -10,14 +10,15 @@ import type { CatalogEntry } from '../core/catalog';
 import type { Store } from '../core/store';
 import { changeSheetDate, SaveQueue, sheetDates } from '../core/collection';
 import { exportDevice } from '../core/export-flow';
+import { startNewBlock } from '../core/block-reset';
 import { openStore } from '../services/storage';
-import { chooseOutput, exportCsv, shareCsv } from '../services/export';
+import { chooseOutput, clearInternalCollectionFiles, exportCsv, shareCsv } from '../services/export';
 import { selectCatalog } from '../services/catalog-import';
 
 const colors = { ink: '#123047', muted: '#597080', line: '#D6E0E5', field: '#F4F7F8', paper: '#FFFFFF', green: '#35624C', red: '#AA3030' };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 type Context = { profile: Profile; catalog: CatalogEntry[]; bucket: string; drafts: Draft[]; priority: boolean };
-type Panel = 'user' | 'settings' | 'catalog' | 'output' | 'block' | 'bucket' | 'quantity' | 'observation' | null;
+type Panel = 'user' | 'settings' | 'new-block' | 'export-result' | 'output' | 'block' | 'bucket' | 'quantity' | 'observation' | null;
 type User = Pick<Profile, 'userId' | 'userName'>;
 type IconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -50,7 +51,7 @@ export default function CollectionScreen() {
   const [rowId, setRowId] = useState<string | null>(null);
   const [dateRow, setDateRow] = useState<string | null>(null);
   const [source, setSource] = useState('Nenhum arquivo importado');
-  const [importedAt, setImportedAt] = useState('');
+  const [exportSummary, setExportSummary] = useState<{ total: number; newRecords: number; filename: string } | null>(null);
   const [target, setTarget] = useState<OutputTarget | null>(null);
   const [pending, setPending] = useState(0);
   const [saveError, setSaveError] = useState('');
@@ -87,9 +88,8 @@ export default function CollectionScreen() {
       await reload(profile, catalog, await storage.setting<string>('activeBucket', ''));
       setUsers(await storage.users());
       setSource(await storage.setting('catalogSource', 'Nenhum arquivo importado'));
-      setImportedAt(await storage.setting('catalogImportedAt', ''));
       if (!profile.userName) { setEdit(''); setPanel('user'); }
-      else if (!catalog.length || await storage.needsCatalogReview()) setPanel('catalog');
+      else if (!catalog.length) setPanel('settings');
     })().catch(e => { if (active) setFatal(message(e)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [reload, retry]);
@@ -151,7 +151,7 @@ export default function CollectionScreen() {
       const profile = await store.current!.selectUser(name);
       const current = contextRef.current!;
       await reload(profile, current.catalog, profile.userId === current.profile.userId && current.profile.userName ? current.bucket : undefined);
-      setUsers(await store.current!.users()); setPanel(!current.catalog.length || await store.current!.needsCatalogReview() ? 'catalog' : null);
+      setUsers(await store.current!.users()); setPanel(!current.catalog.length ? 'settings' : null);
     });
   }
   async function navigate(bucket: string) {
@@ -185,12 +185,22 @@ export default function CollectionScreen() {
       const entries = await store.current!.replaceCatalog(result.entries, result.filename);
       const current = contextRef.current!;
       await reload(current.profile, entries, current.bucket); setSource(result.filename);
-      setImportedAt(await store.current!.setting('catalogImportedAt', ''));
-      if (panel === 'catalog') setPanel(null);
     });
   }
-  async function continueWithLastCatalog() {
-    await run(async () => { await store.current!.useLastCatalog(); setPanel(null); });
+  async function confirmNewBlock() {
+    await run(async () => {
+      // Drain all writes before clearing; a draft validation error does not prevent an explicit reset.
+      await queue.current!.flush().catch(() => {});
+      const profile = await startNewBlock(store.current!, clearInternalCollectionFiles);
+      revision.current++;
+      queue.current = new SaveQueue((count, error) => { setPending(count); setSaveError(error ? message(error) : ''); });
+      validationRef.current = null; setValidation(''); setSaveError(''); setPending(0);
+      setSource('Nenhum arquivo importado'); setTarget(null); setExportSummary(null);
+      setRowId(null); setDateRow(null); setEdit('');
+      await reload(profile, []);
+      setUsers(await store.current!.users());
+      setPanel(profile.userName ? 'settings' : 'user');
+    }, false);
   }
   async function selectOutput(kind: 'folder' | 'create' | 'open') {
     await run(async () => {
@@ -208,11 +218,11 @@ export default function CollectionScreen() {
       const current = contextRef.current!;
       if (!current.profile.userName) { openPanel('user'); return; }
       if (!target) { setPanel('settings'); Alert.alert('Destino do CSV', 'Escolha a pasta ou o arquivo de saída. Depois toque no ícone de exportação.'); return; }
-      const records = await exportDevice(store.current!, current.profile, records => exportCsv(current.profile, records, target));
+      const summary = await exportDevice(store.current!, current.profile, records => exportCsv(current.profile, records, target));
       await reload(current.profile, current.catalog);
-      setPanel('catalog');
+      setExportSummary({ ...summary, filename: exportFilename(current.profile) });
+      setPanel('export-result');
       setNotice('CSV atualizado · nova coleta');
-      Alert.alert('CSV atualizado', `${exportFilename(current.profile)}\n${records.length} registros de todos os usuários deste aparelho.\n\nFormulário limpo. O histórico foi preservado. Se o destino for OneDrive, confira a sincronização no OneDrive.`);
     });
   }
   async function sendCopy() {
@@ -247,7 +257,7 @@ export default function CollectionScreen() {
   const blocks = [...new Map(catalog.map(e => [JSON.stringify([e.cycle, e.block]), e])).values()];
   const landscape = width > 600 && height < 600;
   const issue = saveError || validation;
-  const title = panel === 'user' ? 'Usuário' : panel === 'settings' ? 'Configurações' : panel === 'catalog' ? 'Cadastro deste ciclo' : panel === 'output' ? 'Destino do CSV' : panel === 'block' ? 'Bloco de cruzamento' : panel === 'bucket' ? 'Escolher balde' : panel === 'quantity' ? 'Espigas' : 'Observação';
+  const title = panel === 'user' ? 'Usuário' : panel === 'settings' ? 'Configurações' : panel === 'new-block' ? 'Iniciar novo bloco?' : panel === 'export-result' ? 'Exportação concluída' : panel === 'output' ? 'Destino do CSV' : panel === 'block' ? 'Bloco de cruzamento' : panel === 'bucket' ? 'Escolher balde' : panel === 'quantity' ? 'Espigas' : 'Observação';
   const available = buckets.filter(b => !edit || b.includes(edit.trim())).slice(0, 120);
 
   return <SafeAreaView style={styles.root}>
@@ -304,11 +314,11 @@ export default function CollectionScreen() {
     </View>
 
     {dateRow && <DateTimePicker value={new Date(`${drafts.find(r => r.rowId === dateRow)?.date || today()}T12:00:00`)} mode="date" minimumDate={new Date(2000, 0, 1)} maximumDate={new Date(2100, 11, 31)} onChange={(event, date) => { const id = dateRow; setDateRow(null); if (event.type === 'set' && date) void pickDate(id, today(date)); }} />}
-    <Modal visible={!!panel} transparent animationType="fade" onRequestClose={() => { if (!busy && panel !== 'catalog' && (panel !== 'user' || profile.userName)) setPanel(panel === 'output' ? 'settings' : null); }}>
+    <Modal visible={!!panel} transparent animationType="fade" onRequestClose={() => { if (!busy && (panel !== 'user' || profile.userName)) setPanel(panel === 'output' || panel === 'new-block' ? 'settings' : null); }}>
       <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={styles.modalSafe}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeader}><Text style={styles.modalTitle}>{title}</Text><IconButton icon="x" label="Fechar" disabled={busy || panel === 'catalog' || (panel === 'user' && !profile.userName)} onPress={() => setPanel(panel === 'output' ? 'settings' : null)} /></View>
+            <View style={styles.modalHeader}><Text style={styles.modalTitle}>{title}</Text><IconButton icon="x" label="Fechar" disabled={busy || (panel === 'user' && !profile.userName)} onPress={() => setPanel(panel === 'output' || panel === 'new-block' ? 'settings' : null)} /></View>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
               {panel === 'user' && <>
                 {users.map(u => <View key={u.userId} style={styles.userRow}>
@@ -319,18 +329,32 @@ export default function CollectionScreen() {
                 <TextInput accessibilityLabel="Nome do usuário" editable={!busy} style={styles.input} value={edit} onChangeText={setEdit} placeholder="Nome do usuário" maxLength={80} autoCapitalize="words" />
                 <Action disabled={busy || !edit.trim()} text="Usar este nome" onPress={() => void selectUser(edit)} />
               </>}
-              {panel === 'catalog' && <>
-                <Text style={styles.hint}>Selecione a lista atualizada de baldes para este ciclo. Sem acesso ao arquivo, use o último cadastro.</Text>
-                <Text style={styles.filename}>{source}</Text>
-                {!!importedAt && <Text style={styles.hint}>Importado em {new Date(importedAt).toLocaleString('pt-BR')}</Text>}
-                <Action disabled={busy} text="Selecionar arquivo atualizado" onPress={() => void importCatalog()} />
-                <Action disabled={busy || !catalog.length} text="Usar último cadastro" onPress={() => void continueWithLastCatalog()} />
+              {panel === 'new-block' && <>
+                <Text style={styles.hint}>Esta ação apaga os dados salvos deste aplicativo no aparelho:</Text>
+                <Text style={styles.hint}>{'• Todas as coletas e o histórico de avaliações, de todos os usuários.\n• Prioridades e cadastro de baldes.\n• Datas, espigas, observações, cópias internas do CSV e arquivos temporários.\n• Locais de entrada e saída que estavam salvos.'}</Text>
+                <Text style={styles.hint}>O arquivo original de baldes e os CSVs já exportados não serão excluídos.</Text>
+                <Text style={styles.resetWarning}>A limpeza não pode ser desfeita. Exporte seus dados e confira a sincronização no OneDrive antes de continuar.</Text>
+                <View style={styles.dialogActions}>
+                  <View style={styles.dialogAction}><Action disabled={busy} text="Cancelar" onPress={() => setPanel('settings')} /></View>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Limpar e iniciar novo bloco" accessibilityState={{ disabled: busy }} disabled={busy}
+                    onPress={() => void confirmNewBlock()} style={({ pressed }) => [styles.primaryAction, (busy || pressed) && { opacity: 0.4 }]}>
+                    <Text style={styles.primaryActionText}>Limpar e iniciar</Text>
+                  </Pressable>
+                </View>
+              </>}
+              {panel === 'export-result' && exportSummary && <>
+                <Text style={styles.hint}>O CSV foi atualizado.</Text>
+                <Text style={styles.filename}>{exportSummary.filename}</Text>
+                <View style={styles.exportTotal}><Text style={styles.exportLabel}>Total de registros no arquivo</Text><Text style={styles.exportCount}>{exportSummary.total.toLocaleString('pt-BR')}</Text></View>
+                <View style={styles.exportTotal}><Text style={styles.exportLabel}>Novos desde a última exportação</Text><Text style={styles.exportCount}>{exportSummary.newRecords.toLocaleString('pt-BR')}</Text></View>
+                <Text style={styles.hint}>Confira no OneDrive se a sincronização do arquivo foi concluída.</Text>
+                <Action disabled={busy} text="OK" onPress={() => setPanel(null)} />
               </>}
               {panel === 'settings' && <>
                 <View style={styles.settingsSection}>
                   <Text style={styles.settingsTitle}>Cadastro de baldes</Text>
                   <Text style={styles.hint}>{source} · {catalog.length} baldes</Text>
-                  <Action disabled={busy} text="Atualizar cadastro" onPress={() => void importCatalog()} />
+                  <Action disabled={busy} text="Importar / atualizar baldes" onPress={() => void importCatalog()} />
                 </View>
                 <View style={[styles.settingsSection, styles.settingsDivider]}>
                   <Text style={styles.settingsTitle}>Saída CSV</Text>
@@ -339,9 +363,13 @@ export default function CollectionScreen() {
                 </View>
                 <View style={[styles.settingsSection, styles.settingsDivider]}>
                   <Text style={styles.settingsTitle}>Cópia dos dados</Text>
-                  <Text style={styles.hint}>O histórico permanece no aparelho após exportar.</Text>
                   <Action disabled={busy} text="Enviar cópia dos dados" onPress={() => void sendCopy()} />
-                  <Text style={styles.hint}>Escolha OneDrive ou outro aplicativo. Enviar cópia não limpa a coleta.</Text>
+                  <Text style={styles.hint}>Enviar uma cópia não limpa a coleta.</Text>
+                </View>
+                <View style={[styles.settingsSection, styles.settingsDivider]}>
+                  <Text style={styles.settingsTitle}>Bloco de cruzamento</Text>
+                  <Action disabled={busy} text="Iniciar novo bloco de cruzamento" onPress={() => setPanel('new-block')} />
+                  <Text style={styles.hint}>Limpa os dados locais e redefine os locais dos arquivos.</Text>
                 </View>
               </>}
               {panel === 'output' && <>
@@ -424,6 +452,12 @@ const styles = StyleSheet.create({
   multiline: { minHeight: 100, textAlignVertical: 'top' }, largeInput: { fontSize: 30, textAlign: 'center' },
   bucketGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  resetWarning: { fontSize: 13, lineHeight: 20, color: colors.ink, fontWeight: '600', paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line },
+  dialogActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dialogAction: { flex: 1, minWidth: 110 },
+  primaryAction: { flex: 1, minWidth: 130, minHeight: 44, borderRadius: 8, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center', padding: 10 },
+  primaryActionText: { fontSize: 15, color: colors.paper, fontWeight: '600' },
+  exportTotal: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1, borderColor: colors.line, paddingVertical: 12 },
+  exportLabel: { flex: 1, color: colors.ink, fontSize: 14 }, exportCount: { color: colors.ink, fontSize: 24, fontWeight: '600', fontVariant: ['tabular-nums'] },
   settingsSection: { gap: 8 }, settingsTitle: { fontSize: 15, fontWeight: '600', color: colors.ink },
   settingsDivider: { borderTopWidth: 1, borderColor: colors.line, paddingTop: 14 },
 });
