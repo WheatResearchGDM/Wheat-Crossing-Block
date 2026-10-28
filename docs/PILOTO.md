@@ -4,7 +4,7 @@
 - Importar CSV e XLSX com ao menos dois blocos que compartilhem um número de balde. Conferir a separação.
 - Ativar modo avião, salvar emasculação e polinização e fechar/reabrir o aplicativo.
 - Verificar a diferença entre zero e campo vazio.
-- Conferir as seis linhas sem rolagem na tela principal; tocar no contador e nas observações abre edição com teclado em uma janela própria.
+- Conferir de uma a quatro linhas por finalidade sem rolagem na tela principal, com duas linhas iniciais; tocar no contador e nas observações abre edição com teclado em uma janela própria.
 - Corrigir quantidade e observação diretamente no balde; trocar datas, voltar a uma data anterior e conferir o valor preservado.
 - Alterar várias quantidades rapidamente, navegar e conferir que cada valor ficou no balde correto.
 - Interromper durante uma observação e durante uma quantidade temporariamente vazia; reabrir e conferir recuperação do rascunho.
@@ -23,4 +23,15 @@
 - Cancelar Iniciar novo bloco e conferir dados/destinos preservados. Em dados sintéticos, confirmar a limpeza, reiniciar o app e conferir banco, histórico, prioridades e destinos vazios. Preservar nomes de coletores, identidade do aparelho e arquivos externos. Importar outro bloco e conferir primeira exportação com apenas dados novos.
 - A adaptação da macro Excel para o novo CSV ainda está pendente.
 
-O teste visual da versão 0.6 em aparelho e a integração com o provedor OneDrive real continuam necessários. Os testes usam SQLite real e cobrem recuperação, transações, sequência de gravação, usuários, catálogo substituído, CSV, limpeza de rodadas e exclusão de usuários. O bundle Android não substitui o teste em aparelho.
+O teste visual da versão 0.7 em aparelho e a integração com o provedor OneDrive real continuam necessários. Os testes usam SQLite real e cobrem recuperação, transações, sequência de gravação, usuários, catálogo substituído, CSV, limpeza de rodadas e exclusão de usuários. O bundle Android não substitui o teste em aparelho.
+
+## Verificações da versão 0.7 em aparelho
+
+- Atualizar sem desinstalar a versão anterior. Abrir baldes com a terceira linha preenchida e conferir dados preservados.
+- Usar + e − independentemente em Emasculação e Polinização. Confirmar limites 1–4 e botões mais claros/desabilitados.
+- Preencher a última linha, tocar em − e cancelar. Repetir e confirmar Ocultar linha. Usar + para reencontrar os mesmos dados. Exportar com a linha oculta e conferir o registro no CSV.
+- Trocar de balde e reiniciar: a quantidade de linhas escolhida continua. Outro coletor/bloco conserva sua própria preferência.
+- Conferir as três colunas iguais, setas de espigas à direita do número, títulos centralizados, botões superiores maiores e navegação inferior sem número do balde.
+- Conferir duas, três e quatro linhas por finalidade, incluindo combinações assimétricas, em orientação vertical e horizontal. O ajuste depende da área útil disponível; conferir legibilidade e alvos de toque em dispositivos menores.
+
+TypeScript, lint e 44 testes passaram; incluem SQLite persistente, migração e preservação de linhas ocultas, preferências entre baldes/reinício, exportação e cálculo de geometria. A compilação Android e a conferência do APK não confirmam o teste visual no tablet físico.

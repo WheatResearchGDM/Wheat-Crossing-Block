@@ -24,6 +24,14 @@ Conferidos o digest SHA-256 do ZIP, a estrutura do APK, o bundle embarcado, as b
 
 Primeira execução concluída com sucesso: [ver execução](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40144356972). [Baixar o artefato com o APK](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40144356972/artifacts/12580640662). O pacote gerado foi conferido: integridade do ZIP, estrutura do APK, bloco de assinatura, JavaScript embarcado e bibliotecas ARM de 32/64 bits. A instalação e o teste de campo no aparelho continuam no roteiro do piloto.
 
+## Versão 0.7.0
+
+[Baixar instalador completo](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40683427339/artifacts/12814123776). [Compilação concluída](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40683427339), código `1f066c5`.
+
+Layout adaptável com Data, Observação e Espigas em três colunas iguais; contador à direita, títulos centralizados, cabeçalho maior e navegação também inferior. Duas linhas iniciais por finalidade, ajustáveis entre uma e quatro. + precede − e os limites desabilitam os botões. Ocultar mantém todos os dados e o CSV; uma linha preenchida pede confirmação explicando a preservação. A quantidade de linhas acompanha os próximos baldes e persiste após reiniciar/exportar por coletor e bloco. As avaliações e a terceira linha antiga preenchida são preservadas na atualização.
+
+TypeScript, lint e 44 testes passaram localmente e no GitHub. Conferidos digest do ZIP, CRC do APK, manifesto 0.7.0/código 7, pacote GitHub, certificado igual às versões anteriores, bundle embarcado e bibliotecas ARM 32/64. SHA-256 do APK: `1194c43b251a8dcb6d78ea406c530e88b417a8697db57659412f818631a61d3a`. A instalação e a verificação visual em aparelho físico continuam no roteiro do piloto.
+
 ## Executar
 
 1. Abra a aba Actions do repositório.
