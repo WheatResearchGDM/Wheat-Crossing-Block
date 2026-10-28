@@ -5,10 +5,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { displayDate, exportFilename, MAX_QUANTITY, today } from '../core/model';
-import type { Draft, OutputTarget, Profile } from '../core/model';
+import type { Draft, OutputTarget, Profile, Purpose } from '../core/model';
 import type { CatalogEntry } from '../core/catalog';
 import type { Store } from '../core/store';
-import { changeSheetDate, SaveQueue, sheetDates } from '../core/collection';
+import { changeSheetDate, defaultRowCounts, hasRowData, SaveQueue, sheetDates } from '../core/collection';
+import type { RowCounts } from '../core/collection';
+import { collectionLayout } from '../core/screen-layout';
 import { exportDevice } from '../core/export-flow';
 import { startNewBlock } from '../core/block-reset';
 import { openStore } from '../services/storage';
@@ -22,10 +24,10 @@ type Panel = 'user' | 'settings' | 'new-block' | 'export-result' | 'output' | 'b
 type User = Pick<Profile, 'userId' | 'userName'>;
 type IconName = React.ComponentProps<typeof Feather>['name'];
 
-function IconButton({ icon, label, onPress, disabled = false, large = false }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean; large?: boolean }) {
+function IconButton({ icon, label, onPress, disabled = false, large = false, size, box = 44, boxHeight = box }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean; large?: boolean; size?: number; box?: number; boxHeight?: number }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled}
-    style={({ pressed }) => [styles.iconButton, large && styles.bucketArrow, (pressed || disabled) && { opacity: 0.4 }]} onPress={onPress}>
-    <Feather name={icon} size={large ? 36 : 23} color={colors.ink} />
+    style={({ pressed }) => [styles.iconButton, large && styles.bucketArrow, !large && { width: box, height: boxHeight }, (pressed || disabled) && { opacity: 0.4 }]} onPress={onPress}>
+    <Feather name={icon} size={size ?? (large ? 36 : 23)} color={colors.ink} />
   </Pressable>;
 }
 function Action({ text, onPress, disabled = false }: { text: string; onPress: () => void; disabled?: boolean }) {
@@ -37,6 +39,8 @@ function Action({ text, onPress, disabled = false }: { text: string; onPress: ()
 
 export default function CollectionScreen() {
   const { width, height } = useWindowDimensions();
+  const [screenSize, setScreenSize] = useState({ width, height });
+  const [rowCounts, setRowCounts] = useState<RowCounts>(defaultRowCounts);
   const store = useRef<Store | null>(null);
   const contextRef = useRef<Context | null>(null);
   const [context, setContext] = useState<Context | null>(null);
@@ -71,6 +75,7 @@ export default function CollectionScreen() {
     const bucket = selected && buckets.includes(selected) ? selected : buckets[0] ?? '';
     await store.current!.setProfile(nextProfile);
     const drafts = bucket ? await store.current!.loadSheet(nextProfile, bucket) : [];
+    setRowCounts(await store.current!.getRowCounts(nextProfile));
     const priority = bucket ? await store.current!.getPriority(nextProfile, bucket) : false;
     await store.current!.setSetting('activeBucket', bucket);
     validationRef.current = null; setValidation('');
@@ -142,6 +147,31 @@ export default function CollectionScreen() {
   }
   function step(row: Draft, amount: number) {
     change(row.rowId, { quantity: String(Math.max(0, Math.min(MAX_QUANTITY, (Number(row.quantity) || 0) + amount))) });
+  }
+  function resizeRows(purpose: Purpose, amount: number) {
+    const current = contextRef.current;
+    if (!current || busyRef.current) return;
+    const count = rowCounts[purpose];
+    const nextCount = Math.max(1, Math.min(4, count + amount));
+    if (nextCount === count) return;
+    const row = current.drafts.filter(r => r.purpose === purpose)[count - 1];
+    const apply = () => void run(async () => {
+      const active = contextRef.current!;
+      if (active !== current) return;
+      persist(active);
+      await queue.current!.flush();
+      const next = { ...rowCounts, [purpose]: nextCount };
+      await store.current!.setRowCounts(active.profile, next);
+      setRowCounts(next);
+      if (amount > 0) {
+        const expanded = { ...active, drafts: await store.current!.loadSheet(active.profile, active.bucket) };
+        show(expanded); persist(expanded);
+      }
+    }, false);
+    if (amount < 0 && row && hasRowData(row)) Alert.alert('Ocultar linha preenchida?',
+      'Os dados desta linha continuarão salvos no aparelho e serão incluídos no CSV. Use + para exibir a linha novamente.',
+      [{ text: 'Cancelar', style: 'cancel' }, { text: 'Ocultar linha', onPress: apply }]);
+    else apply();
   }
   function openPanel(next: Panel, row?: Draft) {
     setRowId(row?.rowId ?? null); setEdit(next === 'user' || next === 'bucket' ? '' : next === 'quantity' ? row?.quantity ?? '0' : row?.observation ?? ''); setPanel(next);
@@ -255,61 +285,87 @@ export default function CollectionScreen() {
   const buckets = catalog.filter(e => e.block === profile.block && e.cycle === profile.cycle).map(e => e.bucket);
   const bucketIndex = buckets.indexOf(bucket);
   const blocks = [...new Map(catalog.map(e => [JSON.stringify([e.cycle, e.block]), e])).values()];
-  const landscape = width > 600 && height < 600;
+  const layout = collectionLayout(screenSize.width, screenSize.height, rowCounts);
   const issue = saveError || validation;
   const title = panel === 'user' ? 'Usuário' : panel === 'settings' ? 'Configurações' : panel === 'new-block' ? 'Iniciar novo bloco?' : panel === 'export-result' ? 'Exportação concluída' : panel === 'output' ? 'Destino do CSV' : panel === 'block' ? 'Bloco de cruzamento' : panel === 'bucket' ? 'Escolher balde' : panel === 'quantity' ? 'Espigas' : 'Observação';
   const available = buckets.filter(b => !edit || b.includes(edit.trim())).slice(0, 120);
 
   return <SafeAreaView style={styles.root}>
-    <View style={styles.screen}>
-      <View style={styles.top}>
-        <IconButton icon="user" label={`Usuário: ${profile.userName || 'Escolher'}`} disabled={busy} onPress={() => openPanel('user')} />
+    <View style={styles.screen} onLayout={event => {
+      const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
+      setScreenSize(previous => previous.width === nextWidth && previous.height === nextHeight ? previous : { width: nextWidth, height: nextHeight });
+    }}>
+      <View style={[styles.top, { height: layout.top }]}>
+        <IconButton icon="user" size={layout.headerIcon} box={layout.topButton} label={`Usuário: ${profile.userName || 'Escolher'}`} disabled={busy} onPress={() => openPanel('user')} />
         <Pressable accessibilityRole="button" accessibilityLabel={`Escolher bloco: ${profile.block}`} disabled={busy} style={styles.block} onPress={() => openPanel('block')}>
-          <Text numberOfLines={1} style={styles.blockName}>{profile.block || 'Escolher BC'}</Text><Feather name="chevron-down" size={16} color={colors.ink} />
+          <Text numberOfLines={1} style={[styles.blockName, { fontSize: layout.font - 1 }]}>{profile.block || 'Escolher BC'}</Text><Feather name="chevron-down" size={16} color={colors.ink} />
         </Pressable>
-        <IconButton icon="settings" label="Configurações" disabled={busy} onPress={() => openPanel('settings')} />
-        <IconButton icon="upload" label="Exportar CSV" disabled={busy} onPress={() => void exportCurrent()} />
+        <IconButton icon="settings" size={layout.headerIcon} box={layout.topButton} label="Configurações" disabled={busy} onPress={() => openPanel('settings')} />
+        <IconButton icon="upload" size={layout.headerIcon} box={layout.topButton} label="Exportar CSV" disabled={busy} onPress={() => void exportCurrent()} />
       </View>
-      <View style={styles.bucketNav}>
-        <IconButton icon="chevron-left" large label="Balde anterior" disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} />
+      <View style={[styles.bucketNav, { height: layout.bucket }]}>
+        <IconButton icon="chevron-left" box={layout.bucket} size={layout.compact ? 30 : 36} label="Balde anterior" disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} />
         <Pressable accessibilityRole="button" accessibilityLabel={`Balde ${bucket || 'não selecionado'}. Escolher balde`} disabled={busy} style={styles.bucketChoice} onPress={() => openPanel('bucket')}>
-          <Text style={styles.bucketLabel}>BALDE</Text><Text maxFontSizeMultiplier={1.3} style={styles.bucketNumber}>{bucket || '—'}</Text>
+          <Text style={[styles.bucketLabel, { fontSize: layout.font - 3 }]}>BALDE</Text><Text maxFontSizeMultiplier={1.3} style={[styles.bucketNumber, { fontSize: layout.compact ? 28 : layout.font * 2 }]}>{bucket || '—'}</Text>
         </Pressable>
-        <IconButton icon="chevron-right" large label="Próximo balde" disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} />
+        <IconButton icon="chevron-right" box={layout.bucket} size={layout.compact ? 30 : 36} label="Próximo balde" disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} />
       </View>
       {!!bucket && <Pressable accessibilityRole="switch" accessibilityLabel={`Prioridade do balde ${bucket}`}
         accessibilityState={{ checked: priority, disabled: busy }} disabled={busy} onPress={() => void togglePriority()}
-        style={({ pressed }) => [styles.priorityControl, (pressed || busy) && { opacity: 0.4 }]}>
-        <Text style={styles.priorityText}>Prioridade</Text>
+        style={({ pressed }) => [styles.priorityControl, { minHeight: layout.priority }, (pressed || busy) && { opacity: 0.4 }]}>
+        <Text style={[styles.priorityText, { fontSize: layout.font - 2 }]}>Prioridade</Text>
         <View style={[styles.priorityTrack, priority && styles.priorityOn]}><View style={styles.priorityKnob} /></View>
-        <Text style={styles.priorityState}>{priority ? 'Ligado' : 'Desligado'}</Text>
+        <Text style={[styles.priorityState, { fontSize: layout.font - 2 }]}>{priority ? 'Ligado' : 'Desligado'}</Text>
       </Pressable>}
-      {drafts.length ? <View style={[styles.groups, landscape && styles.horizontal]}>
-        {(['EMASC', 'POLI'] as const).map(purpose => <View key={purpose} style={styles.group}>
-          <Text style={styles.groupTitle}>{purpose === 'EMASC' ? 'Emasculação' : 'Polinização'}</Text>
-          <View style={styles.rowLabels}><Text style={[styles.label, styles.dateColumn]}>Data</Text><Text style={[styles.label, styles.countColumn]}>Espigas</Text><Text numberOfLines={1} style={[styles.label, styles.obsColumn]}>Observação</Text></View>
-          {drafts.filter(r => r.purpose === purpose).map(row => <View key={row.rowId} style={styles.row}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Data ${purpose}: ${row.date ? displayDate(row.date) : 'Escolher'}`} disabled={busy} style={[styles.field, styles.dateColumn]} onPress={() => setDateRow(row.rowId)}>
-              <Text maxFontSizeMultiplier={1.15} numberOfLines={1} style={styles.fieldText}>{row.date ? displayDate(row.date).slice(0, 6) + row.date.slice(2, 4) : '—'}</Text>
-            </Pressable>
-            <View style={styles.countColumn}>
-              <View style={styles.counter}>
-                <IconButton icon="arrow-down" label={`Diminuir espigas ${purpose} ${row.date}`} disabled={busy || Number(row.quantity) <= 0} onPress={() => step(row, -1)} />
-                <Pressable accessibilityRole="button" accessibilityLabel={`Editar espigas ${purpose}: ${row.quantity}`} disabled={busy} style={styles.quantity} onPress={() => openPanel('quantity', row)}>
-                  <Text numberOfLines={1} adjustsFontSizeToFit style={styles.quantityText}>{row.quantity || '—'}</Text>
-                </Pressable>
-                <IconButton icon="arrow-up" label={`Somar espigas ${purpose} ${row.date}`} disabled={busy || Number(row.quantity) >= MAX_QUANTITY} onPress={() => step(row, 1)} />
+      {drafts.length ? <View style={[styles.groups, { gap: layout.gap }, layout.horizontal && styles.horizontal]}>
+        {(['EMASC', 'POLI'] as const).map(purpose => {
+          const name = purpose === 'EMASC' ? 'Emasculação' : 'Polinização';
+          const rows = drafts.filter(r => r.purpose === purpose).slice(0, rowCounts[purpose]);
+          return <View key={purpose} style={[styles.group, { flex: layout.horizontal ? 1 : 0, height: layout.horizontal ? undefined : layout.heading + layout.labels + (rowCounts[purpose] + 2) * layout.gap + rowCounts[purpose] * layout.rowHeight + 1, gap: layout.gap, paddingTop: layout.gap }]}>
+            <View style={[styles.groupHeading, { height: layout.heading }]}>
+              <View style={styles.rowControls}>
+                <IconButton icon="plus" label={`Adicionar linha de ${name}`} size={22} boxHeight={layout.heading} disabled={busy || rowCounts[purpose] >= 4} onPress={() => resizeRows(purpose, 1)} />
+                <IconButton icon="minus" label={`Ocultar última linha de ${name}; os dados são mantidos`} size={22} boxHeight={layout.heading} disabled={busy || rowCounts[purpose] <= 1} onPress={() => resizeRows(purpose, -1)} />
               </View>
+              <Text maxFontSizeMultiplier={1.15} numberOfLines={1} adjustsFontSizeToFit style={[styles.groupTitle, { fontSize: layout.titleFont }]}>{name}</Text>
+              <View style={styles.headingBalance} />
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Observação ${purpose}: ${row.observation || 'Selecionar ou digitar'}`} disabled={busy} style={[styles.field, styles.obsColumn, styles.observation]} onPress={() => openPanel('observation', row)}>
-              <Text numberOfLines={1} style={styles.observationText}>{row.observation || '—'}</Text><Feather name="chevron-down" size={12} color={colors.muted} />
-            </Pressable>
-          </View>)}
-        </View>)}
+            <View style={[styles.rowLabels, { height: layout.labels }]}>
+              <Text style={[styles.label, styles.equalColumn, { fontSize: layout.font - 2 }]}>Data</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.label, styles.equalColumn, { fontSize: layout.font - 2 }]}>Observação</Text>
+              <Text style={[styles.label, styles.equalColumn, { fontSize: layout.font - 2 }]}>Espigas</Text>
+            </View>
+            {rows.map(row => <View key={row.rowId} style={[styles.row, { height: layout.rowHeight }]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Data ${name}: ${row.date ? displayDate(row.date) : 'Escolher'}`} disabled={busy} style={[styles.field, styles.equalColumn]} onPress={() => setDateRow(row.rowId)}>
+                <Text maxFontSizeMultiplier={1.15} numberOfLines={1} adjustsFontSizeToFit style={[styles.fieldText, { fontSize: layout.fieldFont }]}>{row.date ? displayDate(row.date).slice(0, 6) + row.date.slice(2, 4) : '—'}</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Observação ${name}: ${row.observation || 'Selecionar ou digitar'}`} disabled={busy} style={[styles.field, styles.equalColumn, styles.observation]} onPress={() => openPanel('observation', row)}>
+                <Text numberOfLines={1} style={[styles.observationText, { fontSize: layout.fieldFont }]}>{row.observation || '—'}</Text><Feather name="chevron-down" size={14} color={colors.ink} />
+              </Pressable>
+              <View style={[styles.equalColumn, styles.counter]}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Editar espigas ${name}: ${row.quantity}`} disabled={busy} style={styles.quantity} onPress={() => openPanel('quantity', row)}>
+                  <Text maxFontSizeMultiplier={1.15} numberOfLines={1} adjustsFontSizeToFit style={[styles.quantityText, { fontSize: layout.fieldFont + 3 }]}>{row.quantity || '—'}</Text>
+                </Pressable>
+                <View style={styles.counterArrows}>
+                  <IconButton icon="arrow-up" size={Math.min(26, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={layout.rowHeight / 2} label={`Somar espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) >= MAX_QUANTITY} onPress={() => step(row, 1)} />
+                  <IconButton icon="arrow-down" size={Math.min(26, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={layout.rowHeight / 2} label={`Diminuir espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) <= 0} onPress={() => step(row, -1)} />
+                </View>
+              </View>
+            </View>)}
+          </View>;
+        })}
       </View> : <View style={styles.center}><Action text="Importar cadastro de baldes" disabled={busy} onPress={() => openPanel('settings')} /></View>}
-      <Pressable disabled={!issue || busy} onPress={() => void run(async () => {}, true)} accessibilityRole={issue ? 'button' : undefined} style={styles.status}>
+      {!!bucket && <View style={[styles.bottomNav, { height: layout.footer }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Balde anterior, navegação inferior" accessibilityState={{ disabled: busy || bucketIndex <= 0 }} disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} style={({ pressed }) => [styles.bottomButton, { minHeight: layout.footer }, (pressed || busy || bucketIndex <= 0) && { opacity: 0.4 }]}>
+          <Feather name="chevron-left" size={28} color={colors.ink} /><Text style={[styles.actionText, { fontSize: layout.font }]}>Anterior</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Próximo balde, navegação inferior" accessibilityState={{ disabled: busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1 }} disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} style={({ pressed }) => [styles.bottomButton, { minHeight: layout.footer }, (pressed || busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1) && { opacity: 0.4 }]}>
+          <Text style={[styles.actionText, { fontSize: layout.font }]}>Próximo</Text><Feather name="chevron-right" size={28} color={colors.ink} />
+        </Pressable>
+      </View>}
+      <Pressable disabled={!issue || busy} onPress={() => void run(async () => {}, true)} accessibilityRole={issue ? 'button' : undefined} style={[styles.status, { height: layout.status, minHeight: layout.status, paddingTop: 0 }]}>
         {pending || busy ? <ActivityIndicator size="small" color={colors.muted} /> : <Feather name={issue ? 'alert-circle' : 'check-circle'} size={14} color={issue ? colors.red : colors.green} />}
-        <Text accessibilityLiveRegion="polite" numberOfLines={2} style={[styles.statusText, issue && { color: colors.red }]}>{issue ? `${issue} Toque para tentar novamente.` : pending ? 'Gravando no aparelho…' : notice || `${profile.userName || 'Escolha o usuário'} · No aparelho`}</Text>
+        <Text accessibilityLiveRegion="polite" numberOfLines={1} style={[styles.statusText, { fontSize: layout.font - 4 }, issue && { color: colors.red }]}>{issue ? `${issue} Toque para tentar novamente.` : pending ? 'Gravando no aparelho…' : notice || `${profile.userName || 'Escolha o usuário'} · No aparelho`}</Text>
       </Pressable>
     </View>
 
@@ -428,16 +484,22 @@ const styles = StyleSheet.create({
   priorityTrack: { width: 36, height: 20, borderRadius: 12, borderWidth: 1, borderColor: colors.ink, backgroundColor: colors.paper, padding: 2, justifyContent: 'center', alignItems: 'flex-start' },
   priorityOn: { backgroundColor: '#b4bd00', alignItems: 'flex-end' },
   priorityKnob: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.ink },
-  groups: { flex: 1, gap: 12 }, horizontal: { flexDirection: 'row' },
-  group: { flex: 1, borderTopWidth: 1, borderColor: colors.line, paddingTop: 8, gap: 5 },
-  groupTitle: { fontSize: 17, fontWeight: '700', color: colors.ink, marginBottom: 2 },
+  groups: { flex: 1, justifyContent: 'space-evenly' }, horizontal: { flexDirection: 'row' },
+  group: { flex: 1, minWidth: 0, borderTopWidth: 1, borderColor: colors.line },
+  groupHeading: { flexDirection: 'row', alignItems: 'center' },
+  rowControls: { width: 88, flexDirection: 'row' }, headingBalance: { width: 88 },
+  equalColumn: { flex: 1, minWidth: 0 },
+  counterArrows: { alignItems: 'center', justifyContent: 'center' },
+  bottomNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderColor: colors.line },
+  bottomButton: { minHeight: 44, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  groupTitle: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: '700', color: colors.ink },
   rowLabels: { flexDirection: 'row', gap: 5, alignItems: 'center', minHeight: 20 }, label: { fontSize: 12, color: colors.muted, fontWeight: '600' },
-  row: { flex: 1, minHeight: 44, flexDirection: 'row', gap: 5, alignItems: 'center' },
+  row: { flexDirection: 'row', gap: 6, alignItems: 'stretch' },
   dateColumn: { flex: 1, minWidth: 66 }, countColumn: { width: 132 }, obsColumn: { flex: 0.85, minWidth: 66 },
-  field: { height: 44, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.field, borderRadius: 8, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
+  field: { height: '100%', borderWidth: 1, borderColor: colors.line, backgroundColor: colors.field, borderRadius: 8, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
   fieldText: { fontSize: 14, color: colors.ink, fontVariant: ['tabular-nums'] },
-  counter: { flexDirection: 'row', height: 44, backgroundColor: colors.field, borderWidth: 1, borderColor: colors.line, borderRadius: 8, alignItems: 'center' },
-  quantity: { width: 42, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  counter: { flexDirection: 'row', height: '100%', backgroundColor: colors.field, borderWidth: 1, borderColor: colors.line, borderRadius: 8, alignItems: 'center' },
+  quantity: { flex: 1, minWidth: 0, height: '100%', justifyContent: 'center', alignItems: 'center' },
   quantityText: { fontSize: 18, fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] },
   observation: { flexDirection: 'row', gap: 2, justifyContent: 'space-between' }, observationText: { flex: 1, fontSize: 12, color: colors.ink },
   status: { minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 6 }, statusText: { flex: 1, fontSize: 11, color: colors.green },

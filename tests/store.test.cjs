@@ -93,7 +93,7 @@ test('rascunho incompleto sobrevive ao reinício e não substitui uma avaliaçã
     const filename = join(directory, 'bc.db'); const first = await make(new Adapter(filename));
     await first.store.setProfile(profile);
     const sheet = await first.store.loadSheet(profile, '1');
-    sheet[0].date = '2026-10-24'; sheet[3].date = '2026-10-24'; sheet[0].quantity = '17';
+    sheet[0].date = '2026-10-24'; sheet[4].date = '2026-10-24'; sheet[0].quantity = '17';
     assert.equal(await first.store.saveSheet(profile, '1', sheet, ['1']), null);
     sheet[0].quantity = '';
     assert.match(await first.store.saveSheet(profile, '1', sheet, ['1']), /quantidade/);
@@ -109,15 +109,15 @@ test('rascunho incompleto sobrevive ao reinício e não substitui uma avaliaçã
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test('seis linhas, datas sugeridas e zero somente nos baldes visitados', async () => {
+test('oito posições preservadas, duas linhas visíveis por padrão e datas sugeridas', async () => {
   const { db, store } = await make();
-  const sheet = await store.loadSheet(profile, '1'); assert.equal(sheet.length, 6);
+  const sheet = await store.loadSheet(profile, '1'); assert.equal(sheet.length, 8); assert.deepEqual(await store.getRowCounts(profile), { EMASC: 2, POLI: 2 });
   assert.ok(sheet.every(r => r.quantity === '0'));
   assert.equal((await store.all()).length, 0);
-  sheet[0].date = '2026-10-26'; sheet[1].date = '2026-10-27'; sheet[3].date = '2026-10-28';
+  sheet[0].date = '2026-10-26'; sheet[1].date = '2026-10-27'; sheet[4].date = '2026-10-28';
   await store.saveSheet(profile, '1', sheet, ['1', '2']);
   const next = await store.loadSheet(profile, '2');
-  assert.deepEqual(next.map(r => r.date), sheet.map(r => r.date));
+  assert.deepEqual(next.filter(r => r.date).map(r => r.date), sheet.filter(r => r.date).map(r => r.date));
   assert.ok(next.every(r => r.quantity === '0')); assert.equal((await store.all()).length, 3);
   assert.ok((await store.all()).every(r => r.bucket === '1')); db.raw.close();
 });
@@ -470,4 +470,73 @@ test('falha ao limpar arquivos internos não apaga o banco; sucesso permite inic
   await startNewBlock(store, async () => { cleaned = true; });
   assert.equal(cleaned, true); assert.deepEqual(await store.all(), []);
   db.raw.close();
+});
+
+
+test('ocultar linhas mantém rascunhos, avaliações, revisões e CSV após reiniciar', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bc-hidden-'));
+  try {
+    const filename = join(directory, 'bc.db'); const first = await make(new Adapter(filename));
+    await first.store.setProfile(profile);
+    await first.store.setRowCounts(profile, { EMASC: 4, POLI: 3 });
+    const sheet = await first.store.loadSheet(profile, '1');
+    sheet[3].date = '2026-10-28'; sheet[3].quantity = '29'; sheet[3].observation = 'Última linha';
+    sheet[6].date = '2026-10-28'; sheet[6].quantity = '12';
+    await first.store.saveSheet(profile, '1', sheet, ['1', '2']);
+    const before = await first.store.all(); const history = await first.db.getAllAsync('SELECT * FROM revisions');
+    await first.store.setRowCounts(profile, { EMASC: 1, POLI: 1 });
+    assert.deepEqual(await first.store.all(), before);
+    assert.deepEqual(await first.db.getAllAsync('SELECT * FROM revisions'), history);
+    assert.ok(toCsv(await first.store.all()).includes('Última linha'));
+    first.db.raw.close();
+    const second = await make(new Adapter(filename));
+    assert.deepEqual(await second.store.getRowCounts(profile), { EMASC: 1, POLI: 1 });
+    const restored = await second.store.loadSheet(profile, '1');
+    assert.equal(restored[3].quantity, '29'); assert.equal(restored[3].observation, 'Última linha');
+    await second.store.setRowCounts(profile, { EMASC: 4, POLI: 3 });
+    assert.equal((await second.store.loadSheet(profile, '1'))[3].date, '2026-10-28');
+    assert.deepEqual(await second.store.all(), before); second.db.raw.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('quantidade de linhas é comum aos baldes, independente por finalidade e limitada a 1–4', async () => {
+  const { db, store } = await make();
+  assert.deepEqual(await store.getRowCounts(profile), { EMASC: 2, POLI: 2 });
+  await store.setRowCounts(profile, { EMASC: 3, POLI: 1 });
+  await store.loadSheet(profile, '1'); await store.loadSheet(profile, '2');
+  assert.deepEqual(await store.getRowCounts(profile), { EMASC: 3, POLI: 1 });
+  assert.deepEqual(await store.getRowCounts({ ...profile, userId: 'outra' }), { EMASC: 2, POLI: 2 });
+  await store.setRowCounts(profile, { EMASC: 0, POLI: 99 });
+  assert.deepEqual(await store.getRowCounts(profile), { EMASC: 1, POLI: 4 });
+  await store.setProfile(profile); await store.completeExport(await store.all());
+  assert.deepEqual(await store.getRowCounts(profile), { EMASC: 1, POLI: 4 }); db.raw.close();
+});
+
+test('migração preserva as seis linhas antigas e mostra a terceira preenchida uma única vez', async () => {
+  const { db, store } = await make();
+  const legacy = ['EMASC', 'POLI'].flatMap(purpose => Array.from({ length: 3 }, (_, i) => draft({ purpose, date: i === 2 ? '2026-10-28' : '', quantity: i === 2 ? '9' : '0' })));
+  const key = 'sheet:' + JSON.stringify([profile.userId, profile.cycle, profile.block, '1']);
+  await store.setSetting(key, legacy);
+  const migrated = await store.loadSheet(profile, '1');
+  assert.equal(migrated.length, 8); assert.equal(migrated[2].rowId, legacy[2].rowId);
+  assert.equal(migrated[6].rowId, legacy[5].rowId);
+  assert.deepEqual(await store.getRowCounts(profile), { EMASC: 3, POLI: 3 });
+  await store.setRowCounts(profile, { EMASC: 1, POLI: 1 });
+  assert.equal((await store.loadSheet(profile, '1'))[2].quantity, '9');
+  assert.deepEqual(await store.getRowCounts(profile), { EMASC: 1, POLI: 1 }); db.raw.close();
+});
+
+test('datas ocultas não criam avaliações em novos baldes; ao exibir a linha a sugestão reaparece', async () => {
+  const { db, store } = await make();
+  await store.setRowCounts(profile, { EMASC: 4, POLI: 2 });
+  const sheet = await store.loadSheet(profile, '1'); sheet[3].date = '2026-10-28'; sheet[3].quantity = '7';
+  const { sheetDates } = require(join(process.env.BC_TEST_BUILD, 'collection.js'));
+  await store.saveSheet(profile, '1', sheet, ['1','2'], sheetDates(sheet));
+  await store.setRowCounts(profile, { EMASC: 2, POLI: 2 });
+  const next = await store.loadSheet(profile, '2'); assert.equal(next[3].date, '');
+  await store.saveSheet(profile, '2', next, ['1','2']);
+  assert.ok((await store.all()).every(r => r.bucket === '1'));
+  await store.setRowCounts(profile, { EMASC: 4, POLI: 2 });
+  assert.equal((await store.loadSheet(profile, '2'))[3].date, '2026-10-28');
+  assert.equal((await store.loadSheet(profile, '1'))[3].quantity, '7'); db.raw.close();
 });

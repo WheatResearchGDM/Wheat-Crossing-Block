@@ -1,7 +1,7 @@
 # Wheat-Crossing-Block
 Aplicativo para coleta de espigas disponíveis no BC.
 
-Versão Android 0.6.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
+Versão Android 0.7.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
 
 [Baixar APK 0.6.0](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40564446738/artifacts/12763960179). Extraia o ZIP e instale `RegistroBC-GitHub.apk` como atualização de **Registro de BC (GitHub)**. [Instruções](docs/INSTALAR_ANDROID.md).
 
@@ -10,7 +10,7 @@ Versão Android 0.6.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. 
 1. Tocar no ícone de usuário e identificar o coletor pelo nome.
 2. Em Configurações → Importar / atualizar baldes, selecionar o cadastro inicial ou atualizá-lo quando desejar. Exportar não solicita uma nova importação. Escolher o bloco pelo nome no topo.
 3. Navegar pelas setas ou tocar no número para escolher um balde. O controle discreto de prioridade fica abaixo do número e usa `#b4bd00` quando ligado.
-4. Selecionar até três datas por finalidade no início da coleta; os campos de data vazios dos próximos baldes recebem as últimas datas selecionadas. Avaliações existentes são preservadas. Usar o contador `↓ número ↑`.
+4. Selecionar até quatro datas por finalidade no início da coleta; os campos de data vazios dos próximos baldes recebem as últimas datas selecionadas. Avaliações existentes são preservadas. Usar o contador número com as setas à direita.
 5. As alterações são gravadas automaticamente no aparelho, inclusive sem internet.
 6. Tocar no ícone de exportação para atualizar o CSV no destino escolhido.
 7. Após gravação confirmada, iniciar nova rodada no primeiro balde do bloco, com datas em branco, espigas zero e observações vazias. A prioridade de cada balde mantém a última escolha, ligada ou desligada.
@@ -106,3 +106,9 @@ pnpm exec expo export --platform android --output-dir dist-android
 Os testes usam SQLite real e cobrem persistência ao reabrir, transações, idempotência, correções, zero, datas, CSV e leitura de cadastro Excel. A exportação Android valida o bundle JavaScript/Hermes; não gera um APK nem substitui o teste em aparelho. O GitHub Actions executa as mesmas verificações em cada push/PR.
 
 Dados de pesquisa, planilhas operacionais, CSVs exportados, bancos locais e credenciais são ignorados pelo Git. A licença do template Expo está preservada em `LICENSE`; ela se refere ao material original do template.
+
+## Layout da versão 0.7
+
+Duas linhas visíveis por finalidade inicialmente, ajustáveis entre uma e quatro por + e −. Ocultar uma linha mantém seus dados no banco, nos rascunhos e no CSV; uma linha preenchida pede confirmação. + a exibe novamente. A quantidade de linhas é mantida ao trocar de balde, reiniciar ou exportar, separada por coletor e bloco. O novo bloco redefinirá essa preferência. A atualização preserva linhas antigas preenchidas.
+
+As colunas Data, Observação e Espigas têm a mesma largura. As setas do contador ficam juntas à direita do número. Fontes e botões superiores maiores, títulos centralizados, navegação também inferior sem repetir o número do balde. A tela de coleta não usa rolagem; mede a área disponível e compacta as linhas conforme a quantidade. Em orientação horizontal com largura suficiente, as finalidades ficam lado a lado. Em áreas muito pequenas e com quatro linhas, os controles ficam mais compactos.

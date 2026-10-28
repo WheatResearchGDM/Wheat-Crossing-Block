@@ -2,8 +2,8 @@ import { logicalKey, validateDrafts } from './model';
 import type { Draft, Evaluation, Profile } from './model';
 import { catalogKey, validateCatalogEntry } from './catalog';
 import type { CatalogEntry } from './catalog';
-import { collectionRows, createSheet, defaultDates, sheetDates, suggestMissingDates } from './collection';
-import type { DateSuggestions } from './collection';
+import { collectionRows, createSheet, defaultDates, defaultRowCounts, expandSheet, hasRowData, normalizeRowCounts, sheetDates, suggestMissingDates } from './collection';
+import type { DateSuggestions, RowCounts } from './collection';
 
 // Small adapter keeps persistence testable against real SQLite outside Android.
 export interface Database {
@@ -197,12 +197,39 @@ export class Store {
     await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'round:' + userId, JSON.stringify(this.uuid()));
     await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'dates:' + userId, JSON.stringify(defaultDates()));
   }
+  private rowCountsKey(profile: Profile): string {
+    return 'visibleRows:' + JSON.stringify([profile.userId, profile.cycle, profile.block]);
+  }
+  async getRowCounts(profile: Profile): Promise<RowCounts> {
+    return normalizeRowCounts(await this.setting(this.rowCountsKey(profile), defaultRowCounts()));
+  }
+  async setRowCounts(profile: Profile, counts: RowCounts): Promise<void> {
+    // Presentation only: never truncate drafts, date templates, evaluations or revisions.
+    await this.setSetting(this.rowCountsKey(profile), normalizeRowCounts(counts));
+  }
   async loadSheet(profile: Profile, bucket: string): Promise<Draft[]> {
     const round = await this.setting('round:' + profile.userId, '');
     const existing = await this.setting<Draft[] | null>(this.sheetKey(profile, bucket, round), null);
     const dates = await this.setting<DateSuggestions>('dates:' + profile.userId, defaultDates());
-    if (existing) return suggestMissingDates(existing, dates);
-    return suggestMissingDates(createSheet(profile, bucket, await this.all(), dates, this.uuid, round), dates);
+    const visible = await this.getRowCounts(profile);
+    const visibleDates = { EMASC: dates.EMASC.slice(0, visible.EMASC), POLI: dates.POLI.slice(0, visible.POLI) };
+    const sheet = existing ? expandSheet(existing, this.uuid, round)
+      : createSheet(profile, bucket, await this.all(), visibleDates, this.uuid, round);
+    // Upgrade legacy six-slot sheets once, making existing third rows visible.
+    // Explicitly hiding a line later must never reopen it or delete its saved data.
+    if (existing && existing.length < 8) {
+      const counts = await this.getRowCounts(profile);
+      for (const purpose of ['EMASC', 'POLI'] as const) {
+        existing.filter(r => r.purpose === purpose).forEach((row, index) => {
+          if (hasRowData(row)) counts[purpose] = Math.max(counts[purpose], index + 1);
+        });
+      }
+      await this.db.withExclusiveTransactionAsync(async tx => {
+        await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', this.sheetKey(profile, bucket, round), JSON.stringify(sheet));
+        await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', this.rowCountsKey(profile), JSON.stringify(normalizeRowCounts(counts)));
+      });
+    }
+    return suggestMissingDates(sheet, visibleDates);
   }
   async saveSheet(profile: Profile, bucket: string, drafts: Draft[], catalog: string[], selectedDates?: DateSuggestions): Promise<string | null> {
     const round = await this.setting('round:' + profile.userId, '');

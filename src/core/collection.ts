@@ -1,14 +1,31 @@
 import type { Draft, Evaluation, Profile, Purpose } from './model';
 
 export type DateSuggestions = Record<Purpose, string[]>;
-export const defaultDates = (): DateSuggestions => ({ EMASC: ['', '', ''], POLI: ['', '', ''] });
+export const MAX_ROWS = 4;
+export type RowCounts = Record<Purpose, number>;
+export const defaultRowCounts = (): RowCounts => ({ EMASC: 2, POLI: 2 });
+export function normalizeRowCounts(value: Partial<RowCounts>): RowCounts {
+  const count = (n: number | undefined) => Number.isInteger(n) ? Math.max(1, Math.min(MAX_ROWS, n!)) : 2;
+  return { EMASC: count(value.EMASC), POLI: count(value.POLI) };
+}
+export function hasRowData(row: Draft): boolean {
+  return !!(row.date || row.observation.trim() || (row.quantity.trim() && Number(row.quantity) !== 0));
+}
+export function expandSheet(sheet: Draft[], uuid: () => string, roundId: string): Draft[] {
+  return (['EMASC', 'POLI'] as const).flatMap(purpose => {
+    const rows = sheet.filter(r => r.purpose === purpose);
+    while (rows.length < MAX_ROWS) rows.push({ rowId: uuid(), purpose, date: '', quantity: '0', observation: '', roundId });
+    return rows;
+  });
+}
+export const defaultDates = (): DateSuggestions => ({ EMASC: ['', '', '', ''], POLI: ['', '', '', ''] });
 export function createSheet(profile: Profile, bucket: string, records: Evaluation[], dates: DateSuggestions, uuid: () => string, roundId = ''): Draft[] {
   const sheet: Draft[] = [];
   for (const purpose of ['EMASC', 'POLI'] as const) {
     const saved = records.filter(r => r.user_id === profile.userId && r.block === profile.block && r.cycle === profile.cycle && r.bucket === bucket && r.purpose === purpose && (r.round_id ?? '') === roundId)
-      .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3).sort((a, b) => a.date.localeCompare(b.date));
-    const selectedDates = saved.length ? [...saved.map(r => r.date), ...Array(3 - saved.length).fill('')] : dates[purpose];
-    for (let i = 0; i < 3; i++) {
+      .sort((a, b) => b.date.localeCompare(a.date)).slice(0, MAX_ROWS).sort((a, b) => a.date.localeCompare(b.date));
+    const selectedDates = saved.length ? [...saved.map(r => r.date), ...Array(MAX_ROWS - saved.length).fill('')] : dates[purpose];
+    for (let i = 0; i < MAX_ROWS; i++) {
       const record = saved.find(r => r.date === selectedDates[i]);
       sheet.push({ rowId: uuid(), purpose, date: selectedDates[i] ?? '', quantity: String(record?.quantity ?? 0), observation: record?.observation ?? '', roundId });
     }
