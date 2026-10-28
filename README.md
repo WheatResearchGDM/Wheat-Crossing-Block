@@ -1,16 +1,16 @@
 # Wheat-Crossing-Block
 Aplicativo para coleta de espigas disponíveis no BC.
 
-Versão Android 0.7.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
+Versão Android 0.8.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
 
 [Baixar APK 0.7.0](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40683427339/artifacts/12814123776). Extraia o ZIP e instale `RegistroBC-GitHub.apk` como atualização de **Registro de BC (GitHub)**. [Instruções](docs/INSTALAR_ANDROID.md).
 
 ## Fluxo implementado
 
 1. Tocar no ícone de usuário e identificar o coletor pelo nome.
-2. Em Configurações → Importar / atualizar baldes, selecionar o cadastro inicial ou atualizá-lo quando desejar. Exportar não solicita uma nova importação. Escolher o bloco pelo nome no topo.
+2. Em Configurações → Escolher arquivo / Atualizar, selecionar o cadastro inicial ou atualizá-lo quando desejar. Exportar não solicita uma nova importação. Escolher o bloco pelo nome no topo.
 3. Navegar pelas setas ou tocar no número para escolher um balde. O controle discreto de prioridade fica abaixo do número e usa `#b4bd00` quando ligado.
-4. Selecionar até quatro datas por finalidade no início da coleta; os campos de data vazios dos próximos baldes recebem as últimas datas selecionadas. Avaliações existentes são preservadas. Usar o contador número com as setas à direita.
+4. Selecionar duas datas por finalidade no início da coleta; os campos de data vazios dos próximos baldes recebem as últimas datas selecionadas. Avaliações existentes são preservadas. Usar o contador número com as setas à direita.
 5. As alterações são gravadas automaticamente no aparelho, inclusive sem internet.
 6. Tocar no ícone de exportação para atualizar o CSV no destino escolhido.
 7. Após gravação confirmada, iniciar nova rodada no primeiro balde do bloco, com datas em branco, espigas zero e observações vazias. A prioridade de cada balde mantém a última escolha, ligada ou desligada.
@@ -60,7 +60,7 @@ BC_DUPLO_KX26;101
 - Limites: arquivo até 5 MB e 10.000 linhas de dados. Arquivos inválidos são rejeitados antes da incorporação.
 - O mesmo número pode existir em diferentes blocos. Repetições do mesmo vínculo são ignoradas. A última importação substitui a lista de navegação; as coletas dos catálogos anteriores permanecem no aparelho e no CSV.
 
-O cadastro funciona offline após a importação. Para alterá-lo, use Configurações → Importar / atualizar baldes. A nova lista substitui a navegação, inclusive removendo baldes ausentes no arquivo, sem apagar avaliações anteriores. Não há solicitação de cadastro ao exportar nem ao iniciar outra coleta com um cadastro existente.
+O cadastro funciona offline após a importação. Para alterá-lo, use Configurações → Escolher arquivo / Atualizar. A nova lista substitui a navegação, inclusive removendo baldes ausentes no arquivo, sem apagar avaliações anteriores. Não há solicitação de cadastro ao exportar nem ao iniciar outra coleta com um cadastro existente.
 
 ## Regras da coleta
 
@@ -107,8 +107,14 @@ Os testes usam SQLite real e cobrem persistência ao reabrir, transações, idem
 
 Dados de pesquisa, planilhas operacionais, CSVs exportados, bancos locais e credenciais são ignorados pelo Git. A licença do template Expo está preservada em `LICENSE`; ela se refere ao material original do template.
 
-## Layout da versão 0.7
+## Layout e cadastro da versão 0.8
 
-Duas linhas visíveis por finalidade inicialmente, ajustáveis entre uma e quatro por + e −. Ocultar uma linha mantém seus dados no banco, nos rascunhos e no CSV; uma linha preenchida pede confirmação. + a exibe novamente. A quantidade de linhas é mantida ao trocar de balde, reiniciar ou exportar, separada por coletor e bloco. O novo bloco redefinirá essa preferência. A atualização preserva linhas antigas preenchidas.
+A tela mostra duas linhas fixas de Emasculação e duas de Polinização. Não há +/− para linhas. Os campos mais altos ocupam a área disponível sem rolagem na tela de coleta; em horizontal com largura suficiente, as finalidades ficam lado a lado. As colunas Data, Observação e Espigas têm a mesma largura e as setas de espigas ficam juntas à direita do número. Usuário, configurações e exportação ficam em coluna no canto superior esquerdo; a seleção de BC fica no canto superior direito. O controle de prioridade é maior e mantém a última escolha.
 
-As colunas Data, Observação e Espigas têm a mesma largura. As setas do contador ficam juntas à direita do número. Fontes e botões superiores maiores, títulos centralizados, navegação também inferior sem repetir o número do balde. A tela de coleta não usa rolagem; mede a área disponível e compacta as linhas conforme a quantidade. Em orientação horizontal com largura suficiente, as finalidades ficam lado a lado. Em áreas muito pequenas e com quatro linhas, os controles ficam mais compactos.
+Dados e rascunhos das antigas terceira e quarta linhas são preservados. Suas avaliações já coletadas permanecem no CSV; os registros históricos não são excluídos pela mudança de layout.
+
+No cadastro de baldes, **Escolher arquivo** seleciona o documento original. **Atualizar**, ao lado, relê o mesmo documento sem abrir o seletor e registra a última importação. A fonte e a lista só são substituídas depois da leitura e validação completas. Se o documento estiver sem acesso ou inválido, o cadastro anterior e as avaliações são preservados. A importação continua manual; exportar ou iniciar outra coleta não relê o arquivo sozinho.
+
+Na primeira utilização depois de atualizar uma versão antiga, use **Escolher arquivo** uma vez para autorizar o acesso ao documento original. Antes disso, **Atualizar** fica desabilitado, mas o último cadastro já importado continua disponível offline. Se o provedor perder o vínculo (arquivo movido/substituído ou permissão revogada), escolha o arquivo novamente. Em arquivos do OneDrive, a leitura depende do conteúdo disponibilizado pelo provedor; confira que a edição foi sincronizada.
+
+O novo bloco, após confirmação de limpeza, também esquece o vínculo com o arquivo de entrada. Os arquivos externos não são excluídos.

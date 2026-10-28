@@ -526,7 +526,7 @@ test('migração preserva as seis linhas antigas e mostra a terceira preenchida 
   assert.deepEqual(await store.getRowCounts(profile), { EMASC: 1, POLI: 1 }); db.raw.close();
 });
 
-test('datas ocultas não criam avaliações em novos baldes; ao exibir a linha a sugestão reaparece', async () => {
+test('datas ocultas não criam avaliações nos novos baldes de duas linhas fixas', async () => {
   const { db, store } = await make();
   await store.setRowCounts(profile, { EMASC: 4, POLI: 2 });
   const sheet = await store.loadSheet(profile, '1'); sheet[3].date = '2026-10-28'; sheet[3].quantity = '7';
@@ -537,6 +537,46 @@ test('datas ocultas não criam avaliações em novos baldes; ao exibir a linha a
   await store.saveSheet(profile, '2', next, ['1','2']);
   assert.ok((await store.all()).every(r => r.bucket === '1'));
   await store.setRowCounts(profile, { EMASC: 4, POLI: 2 });
-  assert.equal((await store.loadSheet(profile, '2'))[3].date, '2026-10-28');
+  assert.equal((await store.loadSheet(profile, '2'))[3].date, ''); // fixed two-row UI never suggests a hidden new evaluation
   assert.equal((await store.loadSheet(profile, '1'))[3].quantity, '7'); db.raw.close();
+});
+
+
+test('duas linhas editáveis preservam avaliações e rascunhos antigos da terceira e quarta linhas', async () => {
+  const { db,store } = await make(); await store.setProfile(profile);
+  const old=await store.loadSheet(profile,'1');
+  old[2].date='2026-10-26';old[2].quantity='13';old[2].observation='Terceira antiga';
+  old[3].date='2026-10-27';old[3].quantity='24';old[3].observation='Quarta antiga';
+  await store.saveSheet(profile,'1',old,['1']);
+  const previous=await store.all();
+  old[0].date='2026-10-28';old[0].quantity='9';
+  old[3].quantity=''; // a partial legacy draft must not block the two current editable rows
+  assert.equal(await store.saveSheet(profile,'1',old,['1'],undefined,true),null);
+  const restored=await store.loadSheet(profile,'1');
+  assert.equal(restored.length,8);assert.equal(restored[2].observation,'Terceira antiga');assert.equal(restored[3].quantity,'');
+  const all=await store.all();
+  assert.equal(all.length,3);assert.deepEqual(all.filter(r=>previous.some(old=>old.record_id===r.record_id)),previous);
+  assert.ok(toCsv(all).includes('Terceira antiga'));assert.ok(toCsv(all).includes('Quarta antiga'));
+  db.raw.close();
+});
+
+test('cadastro e vínculo ao arquivo original são substituídos na mesma transação', async () => {
+  const { db,store }=await make();
+  const original={uri:'content://provider/document/arquivo-1',name:'baldes.xlsx'};
+  await store.replaceCatalog([{cycle:'',block:'BC',bucket:'1'}],original.name,original);
+  await store.save({...profile,cycle:'',block:'BC'},'1',[draft()],['1']);
+  const records=await store.all();const importedAt=await store.setting('catalogImportedAt','');
+  const next={uri:'content://provider/document/arquivo-2',name:'outro.xlsx'};
+  await db.execAsync("CREATE TRIGGER fail_source BEFORE INSERT ON settings WHEN NEW.key='catalogInput' BEGIN SELECT RAISE(ABORT,'source failed'); END;");
+  await assert.rejects(store.replaceCatalog([{cycle:'',block:'BC',bucket:'2'}],next.name,next),/source failed/);
+  assert.equal((await store.getCatalog())[0].bucket,'1');
+  assert.deepEqual(await store.setting('catalogInput',null),original);
+  assert.equal(await store.setting('catalogSource',''),original.name);
+  assert.equal(await store.setting('catalogImportedAt',''),importedAt);
+  assert.deepEqual(await store.all(),records);
+  await db.execAsync('DROP TRIGGER fail_source');
+  await store.replaceCatalog([{cycle:'',block:'BC',bucket:'2'}],next.name,next);
+  assert.equal((await store.getCatalog())[0].bucket,'2');assert.deepEqual(await store.setting('catalogInput',null),next);
+  assert.deepEqual(await store.all(),records);
+  await store.resetBlock();assert.equal(await store.setting('catalogInput',null),null);db.raw.close();
 });

@@ -31,3 +31,13 @@ test('escolher data após digitar preserva o rascunho; outra data abre sua próp
   assert.equal(reopened[0].quantity, '21'); assert.equal(reopened[0].observation, 'Revisado');
   assert.throws(() => changeSheetDate([...first, { ...first[0], rowId: 'outra', date: '2026-10-25' }], 'linha', '2026-10-25', [], profile, '1'), /outra linha/);
 });
+
+
+test('duas linhas fixas podem reabrir uma data de linha antiga oculta sem apagar o rascunho antigo', () => {
+  const profile={userId:'a',cycle:'',block:'BC'};
+  const sheet=Array.from({length:4},(_,i)=>({rowId:'r'+i,date:i===2?'2026-10-28':'',quantity:i===2?'27':'0',observation:i===2?'Antiga':'',purpose:'EMASC'}));
+  const records=[{user_id:'a',cycle:'',block:'BC',bucket:'1',purpose:'EMASC',date:'2026-10-28',quantity:27,observation:'Antiga'}];
+  const next=changeSheetDate(sheet,'r0','2026-10-28',records,profile,'1',true);
+  assert.equal(next[0].quantity,'27');assert.equal(next[0].observation,'Antiga');assert.deepEqual(next[2],sheet[2]);
+  assert.throws(()=>changeSheetDate(next,'r1','2026-10-28',records,profile,'1',true),/outra linha/);
+});

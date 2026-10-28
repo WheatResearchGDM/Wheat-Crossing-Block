@@ -1,8 +1,8 @@
 import { logicalKey, validateDrafts } from './model';
 import type { Draft, Evaluation, Profile } from './model';
 import { catalogKey, validateCatalogEntry } from './catalog';
-import type { CatalogEntry } from './catalog';
-import { collectionRows, createSheet, defaultDates, defaultRowCounts, expandSheet, hasRowData, normalizeRowCounts, sheetDates, suggestMissingDates } from './collection';
+import type { CatalogEntry, CatalogSource } from './catalog';
+import { collectionRows, createSheet, defaultDates, defaultRowCounts, expandSheet, hasRowData, normalizeRowCounts, sheetDates, suggestMissingDates, visibleSheet } from './collection';
 import type { DateSuggestions, RowCounts } from './collection';
 
 // Small adapter keeps persistence testable against real SQLite outside Android.
@@ -127,7 +127,7 @@ export class Store {
     await this.db.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalog', JSON.stringify(all));
     return all;
   }
-  async replaceCatalog(entries: CatalogEntry[], filename: string): Promise<CatalogEntry[]> {
+  async replaceCatalog(entries: CatalogEntry[], filename: string, input?: CatalogSource | null): Promise<CatalogEntry[]> {
     if (!entries.length) throw new Error('O cadastro está vazio.');
     const previous = await this.getCatalog();
     const normalized = entries.map(e => {
@@ -140,6 +140,7 @@ export class Store {
     await this.db.withExclusiveTransactionAsync(async tx => {
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalog', JSON.stringify(next));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogSource', JSON.stringify(filename));
+      if (input !== undefined) await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogInput', JSON.stringify(input));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'catalogImportedAt', JSON.stringify(this.clock()));
     });
     return next;
@@ -211,7 +212,7 @@ export class Store {
     const round = await this.setting('round:' + profile.userId, '');
     const existing = await this.setting<Draft[] | null>(this.sheetKey(profile, bucket, round), null);
     const dates = await this.setting<DateSuggestions>('dates:' + profile.userId, defaultDates());
-    const visible = await this.getRowCounts(profile);
+    const visible = defaultRowCounts();
     const visibleDates = { EMASC: dates.EMASC.slice(0, visible.EMASC), POLI: dates.POLI.slice(0, visible.POLI) };
     const sheet = existing ? expandSheet(existing, this.uuid, round)
       : createSheet(profile, bucket, await this.all(), visibleDates, this.uuid, round);
@@ -231,10 +232,10 @@ export class Store {
     }
     return suggestMissingDates(sheet, visibleDates);
   }
-  async saveSheet(profile: Profile, bucket: string, drafts: Draft[], catalog: string[], selectedDates?: DateSuggestions): Promise<string | null> {
+  async saveSheet(profile: Profile, bucket: string, drafts: Draft[], catalog: string[], selectedDates?: DateSuggestions, visibleOnly = false): Promise<string | null> {
     const round = await this.setting('round:' + profile.userId, '');
     if (drafts.some(r => (r.roundId ?? '') !== round)) throw new Error('Esta rodada já foi encerrada. Reabra o balde para continuar.');
-    const rows = collectionRows(drafts);
+    const rows = collectionRows(visibleOnly ? visibleSheet(drafts) : drafts);
     let error: string | null = null;
     try {
       if (rows.some(r => !r.quantity.trim())) throw new Error('Preencha a quantidade. Use 0 para nenhuma espiga.');

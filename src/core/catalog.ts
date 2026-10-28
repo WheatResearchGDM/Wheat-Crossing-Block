@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 
 export type CatalogEntry = { cycle: string; block: string; bucket: string };
+export type CatalogSource = { uri: string; name: string };
 export type CatalogImport = { entries: CatalogEntry[]; duplicates: number; sheetName: string };
 const normalized = (text: unknown) => String(text ?? '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[ _-]+/g, ' ');
 export const catalogKey = (entry: CatalogEntry) => JSON.stringify([entry.cycle, entry.block, entry.bucket]);

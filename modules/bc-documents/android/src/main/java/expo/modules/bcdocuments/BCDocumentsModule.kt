@@ -3,6 +3,7 @@ package expo.modules.bcdocuments
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.util.Base64
 import androidx.documentfile.provider.DocumentFile
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
@@ -11,8 +12,10 @@ import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 
 private const val PICK_OUTPUT = 61432
+private const val MAX_CATALOG_BYTES = 5 * 1024 * 1024
 
 class BCDocumentsModule : Module() {
   private var pending: Promise? = null
@@ -24,17 +27,18 @@ class BCDocumentsModule : Module() {
 
     AsyncFunction("chooseAsync") { kind: String, filename: String, promise: Promise ->
       if (pending != null) throw IOException("Já há uma seleção aberta.")
-      require(kind in listOf("folder", "create", "open"))
+      require(kind in listOf("folder", "create", "open", "catalog"))
       val intent = Intent(when (kind) {
         "folder" -> Intent.ACTION_OPEN_DOCUMENT_TREE
         "create" -> Intent.ACTION_CREATE_DOCUMENT
         else -> Intent.ACTION_OPEN_DOCUMENT
       }).apply {
         putExtra(Intent.EXTRA_LOCAL_ONLY, false)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        if (kind != "catalog") addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         if (kind != "folder") {
           addCategory(Intent.CATEGORY_OPENABLE)
-          type = if (kind == "open") "*/*" else "text/csv"
+          type = if (kind == "open" || kind == "catalog") "*/*" else "text/csv"
           putExtra(Intent.EXTRA_TITLE, filename)
         }
       }
@@ -55,11 +59,36 @@ class BCDocumentsModule : Module() {
       try {
         val uri = intent.data!!
         val flags = intent.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-        if (flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0) throw IOException("O destino não concedeu acesso de escrita.")
-        context.contentResolver.takePersistableUriPermission(uri, flags)
+        if (pickerKind == "catalog") {
+          if (flags and Intent.FLAG_GRANT_READ_URI_PERMISSION == 0) throw IOException("O arquivo não concedeu acesso de leitura.")
+        } else if (flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0) throw IOException("O destino não concedeu acesso de escrita.")
+        context.contentResolver.takePersistableUriPermission(uri, if (pickerKind == "catalog") flags and Intent.FLAG_GRANT_READ_URI_PERMISSION else flags)
         val document = if (pickerKind == "folder") DocumentFile.fromTreeUri(context, uri) else DocumentFile.fromSingleUri(context, uri)
         promise.resolve(mapOf("kind" to (if (pickerKind == "folder") "folder" else "file"), "uri" to uri.toString(), "name" to (document?.name ?: "Destino selecionado")))
       } catch (e: Exception) { promise.reject(e.toCodedException()) }
+    }
+
+    AsyncFunction("readCatalogAsync") { location: String ->
+      val uri = Uri.parse(location)
+      if (uri.scheme != "content") throw IOException("Escolha o arquivo do cadastro novamente.")
+      val file = DocumentFile.fromSingleUri(context, uri) ?: throw IOException("Arquivo indisponível. Último cadastro mantido.")
+      if (!file.isFile || !file.canRead()) throw IOException("Não foi possível acessar o arquivo. Último cadastro mantido. Confira a conexão ou escolha o arquivo novamente.")
+      if (file.length() > MAX_CATALOG_BYTES) throw IOException("Use um cadastro com até 5 MB.")
+      val bytes = (context.contentResolver.openInputStream(uri) ?: throw IOException("Não foi possível ler o arquivo. Último cadastro mantido.")).use { input ->
+        ByteArrayOutputStream().use { output ->
+          val buffer = ByteArray(8192)
+          var total = 0
+          while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            if (total > MAX_CATALOG_BYTES) throw IOException("Use um cadastro com até 5 MB.")
+            output.write(buffer, 0, count)
+          }
+          output.toByteArray()
+        }
+      }
+      mapOf("name" to (file.name ?: "cadastro.xlsx"), "base64" to Base64.encodeToString(bytes, Base64.NO_WRAP))
     }
 
     AsyncFunction("writeCsvAsync") { kind: String, location: String, filename: String, content: String ->

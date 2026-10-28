@@ -1,26 +1,24 @@
-import type { RowCounts } from './collection';
-
-// Pure geometry: uses the measured safe content area, including split-screen/rotation.
-export function collectionLayout(width: number, height: number, rows: RowCounts) {
-  const horizontal = width >= 640 && width > height;
+// Geometry of the fixed two-row screen, measured inside the safe area.
+export function collectionLayout(width: number, height: number) {
+  const horizontal = width >= 700 && width > height;
   const tablet = width >= 600;
-  const compact = height < 720;
   const short = height < 440;
-  const top = short ? 44 : tablet && !compact ? 64 : 52;
-  const bucket = short ? 44 : compact ? 58 : 76;
-  const priority = short ? 28 : compact ? 32 : 40;
-  const footer = short ? 36 : compact ? 44 : 52;
+  const compact = height < 720;
+  const topButton = short ? 44 : tablet && !compact ? 64 : 48;
+  const bucket = short ? 48 : compact ? 56 : 72;
+  const header = Math.max(topButton * 3, topButton + bucket + (short ? 36 : 40));
+  const priority = header - topButton - bucket;
+  const footer = short ? 40 : compact ? 44 : 52;
   const status = short ? 20 : compact ? 22 : 28;
-  const heading = short ? 32 : compact ? 36 : 44;
-  const labels = short ? 20 : compact ? 20 : 26;
-  const gap = short ? 2 : compact ? 3 : 6;
-  const sectionCount = horizontal ? 1 : 2;
-  const slots = horizontal ? Math.max(rows.EMASC, rows.POLI) : rows.EMASC + rows.POLI;
-  const fixed = top + bucket + priority + footer + status + sectionCount * (heading + labels + gap * 2) + 12;
-  const rowHeight = Math.max(24, Math.min(tablet ? 84 : 64, Math.floor((height - fixed) / slots) - gap));
+  const gap = short ? 4 : compact ? 6 : 10;
+  const groupGap = compact ? 8 : 14;
+  const heading = short ? 30 : compact ? 32 : 38;
+  const labels = compact ? 20 : 26;
+  const groupsHeight = height - header - footer - status - 4;
+  const sectionHeight = horizontal ? groupsHeight : (groupsHeight - groupGap) / 2;
+  const rowHeight = Math.max(24, Math.floor((sectionHeight - heading - labels - gap * 4 - 1) / 2));
   const font = short ? 16 : tablet ? 20 : 16;
-  const fieldFont = rowHeight < 38 ? 13 : font;
-  return { horizontal, top, bucket, priority, footer, status, heading, labels, gap, rowHeight,
-    font, fieldFont, titleFont: tablet ? 23 : 19, headerIcon: short ? 30 : tablet ? 40 : 32,
-    topButton: short ? 44 : tablet && !compact ? 64 : 52, compact };
+  return { horizontal, compact, header, bucket, priority, footer, status, heading, labels, gap,
+    groupGap, rowHeight, font, fieldFont: font, titleFont: short ? 19 : tablet ? 23 : 19,
+    topButton, headerIcon: short ? 30 : tablet ? 40 : 32 };
 }

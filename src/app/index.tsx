@@ -5,17 +5,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { displayDate, exportFilename, MAX_QUANTITY, today } from '../core/model';
-import type { Draft, OutputTarget, Profile, Purpose } from '../core/model';
-import type { CatalogEntry } from '../core/catalog';
+import type { Draft, OutputTarget, Profile } from '../core/model';
+import type { CatalogEntry, CatalogSource } from '../core/catalog';
 import type { Store } from '../core/store';
-import { changeSheetDate, defaultRowCounts, hasRowData, SaveQueue, sheetDates } from '../core/collection';
-import type { RowCounts } from '../core/collection';
+import { changeSheetDate, SaveQueue, sheetDates, VISIBLE_ROWS } from '../core/collection';
 import { collectionLayout } from '../core/screen-layout';
 import { exportDevice } from '../core/export-flow';
 import { startNewBlock } from '../core/block-reset';
 import { openStore } from '../services/storage';
 import { chooseOutput, clearInternalCollectionFiles, exportCsv, shareCsv } from '../services/export';
-import { selectCatalog } from '../services/catalog-import';
+import { reloadCatalog, selectCatalog } from '../services/catalog-import';
 
 const colors = { ink: '#123047', muted: '#597080', line: '#D6E0E5', field: '#F4F7F8', paper: '#FFFFFF', green: '#35624C', red: '#AA3030' };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -30,17 +29,16 @@ function IconButton({ icon, label, onPress, disabled = false, large = false, siz
     <Feather name={icon} size={size ?? (large ? 36 : 23)} color={colors.ink} />
   </Pressable>;
 }
-function Action({ text, onPress, disabled = false }: { text: string; onPress: () => void; disabled?: boolean }) {
+function Action({ text, onPress, disabled = false, icon }: { text: string; onPress: () => void; disabled?: boolean; icon?: IconName }) {
   return <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }}
-    onPress={onPress} style={({ pressed }) => [styles.action, (disabled || pressed) && { opacity: 0.4 }]}>
-    <Text style={styles.actionText}>{text}</Text>
+    onPress={onPress} style={({ pressed }) => [styles.action, icon && styles.actionWithIcon, (disabled || pressed) && { opacity: 0.4 }]}>
+    {icon && <Feather name={icon} size={20} color={colors.ink} />}<Text style={[styles.actionText, icon && styles.actionIconText]}>{text}</Text>
   </Pressable>;
 }
 
 export default function CollectionScreen() {
   const { width, height } = useWindowDimensions();
   const [screenSize, setScreenSize] = useState({ width, height });
-  const [rowCounts, setRowCounts] = useState<RowCounts>(defaultRowCounts);
   const store = useRef<Store | null>(null);
   const contextRef = useRef<Context | null>(null);
   const [context, setContext] = useState<Context | null>(null);
@@ -55,6 +53,9 @@ export default function CollectionScreen() {
   const [rowId, setRowId] = useState<string | null>(null);
   const [dateRow, setDateRow] = useState<string | null>(null);
   const [source, setSource] = useState('Nenhum arquivo importado');
+  const [catalogInput, setCatalogInput] = useState<CatalogSource | null>(null);
+  const [catalogImportedAt, setCatalogImportedAt] = useState('');
+  const [catalogNotice, setCatalogNotice] = useState('');
   const [exportSummary, setExportSummary] = useState<{ total: number; newRecords: number; filename: string } | null>(null);
   const [target, setTarget] = useState<OutputTarget | null>(null);
   const [pending, setPending] = useState(0);
@@ -75,7 +76,6 @@ export default function CollectionScreen() {
     const bucket = selected && buckets.includes(selected) ? selected : buckets[0] ?? '';
     await store.current!.setProfile(nextProfile);
     const drafts = bucket ? await store.current!.loadSheet(nextProfile, bucket) : [];
-    setRowCounts(await store.current!.getRowCounts(nextProfile));
     const priority = bucket ? await store.current!.getPriority(nextProfile, bucket) : false;
     await store.current!.setSetting('activeBucket', bucket);
     validationRef.current = null; setValidation('');
@@ -93,6 +93,8 @@ export default function CollectionScreen() {
       await reload(profile, catalog, await storage.setting<string>('activeBucket', ''));
       setUsers(await storage.users());
       setSource(await storage.setting('catalogSource', 'Nenhum arquivo importado'));
+      setCatalogInput(await storage.setting<CatalogSource | null>('catalogInput', null));
+      setCatalogImportedAt(await storage.setting('catalogImportedAt', ''));
       if (!profile.userName) { setEdit(''); setPanel('user'); }
       else if (!catalog.length) setPanel('settings');
     })().catch(e => { if (active) setFatal(message(e)); }).finally(() => { if (active) setLoading(false); });
@@ -106,7 +108,7 @@ export default function CollectionScreen() {
     queue.current!.enqueue(async () => {
       const error = await store.current!.saveSheet(snapshot.profile, snapshot.bucket, snapshot.drafts,
         snapshot.catalog.filter(e => e.block === snapshot.profile.block && e.cycle === snapshot.profile.cycle).map(e => e.bucket),
-        datesSelected ? sheetDates(snapshot.drafts) : undefined);
+        datesSelected ? sheetDates(snapshot.drafts) : undefined, true);
       if (version === revision.current) { validationRef.current = error; setValidation(error ?? ''); }
     }, JSON.stringify([next.profile.userId, next.profile.block, next.profile.cycle, next.bucket]));
   }
@@ -148,31 +150,6 @@ export default function CollectionScreen() {
   function step(row: Draft, amount: number) {
     change(row.rowId, { quantity: String(Math.max(0, Math.min(MAX_QUANTITY, (Number(row.quantity) || 0) + amount))) });
   }
-  function resizeRows(purpose: Purpose, amount: number) {
-    const current = contextRef.current;
-    if (!current || busyRef.current) return;
-    const count = rowCounts[purpose];
-    const nextCount = Math.max(1, Math.min(4, count + amount));
-    if (nextCount === count) return;
-    const row = current.drafts.filter(r => r.purpose === purpose)[count - 1];
-    const apply = () => void run(async () => {
-      const active = contextRef.current!;
-      if (active !== current) return;
-      persist(active);
-      await queue.current!.flush();
-      const next = { ...rowCounts, [purpose]: nextCount };
-      await store.current!.setRowCounts(active.profile, next);
-      setRowCounts(next);
-      if (amount > 0) {
-        const expanded = { ...active, drafts: await store.current!.loadSheet(active.profile, active.bucket) };
-        show(expanded); persist(expanded);
-      }
-    }, false);
-    if (amount < 0 && row && hasRowData(row)) Alert.alert('Ocultar linha preenchida?',
-      'Os dados desta linha continuarão salvos no aparelho e serão incluídos no CSV. Use + para exibir a linha novamente.',
-      [{ text: 'Cancelar', style: 'cancel' }, { text: 'Ocultar linha', onPress: apply }]);
-    else apply();
-  }
   function openPanel(next: Panel, row?: Draft) {
     setRowId(row?.rowId ?? null); setEdit(next === 'user' || next === 'bucket' ? '' : next === 'quantity' ? row?.quantity ?? '0' : row?.observation ?? ''); setPanel(next);
   }
@@ -209,10 +186,15 @@ export default function CollectionScreen() {
       }) },
     ]);
   }
-  async function importCatalog() {
+  async function importCatalog(update = false) {
     await run(async () => {
-      const result = await selectCatalog(); if (!result) return;
-      const entries = await store.current!.replaceCatalog(result.entries, result.filename);
+      setCatalogNotice('');
+      const result = update && catalogInput ? await reloadCatalog(catalogInput) : update ? null : await selectCatalog();
+      if (!result) return;
+      const entries = await store.current!.replaceCatalog(result.entries, result.filename, result.source);
+      setCatalogInput(result.source);
+      setCatalogImportedAt(await store.current!.setting('catalogImportedAt', ''));
+      setCatalogNotice(update ? 'Cadastro atualizado. Avaliações preservadas.' : 'Cadastro importado.');
       const current = contextRef.current!;
       await reload(current.profile, entries, current.bucket); setSource(result.filename);
     });
@@ -225,7 +207,7 @@ export default function CollectionScreen() {
       revision.current++;
       queue.current = new SaveQueue((count, error) => { setPending(count); setSaveError(error ? message(error) : ''); });
       validationRef.current = null; setValidation(''); setSaveError(''); setPending(0);
-      setSource('Nenhum arquivo importado'); setTarget(null); setExportSummary(null);
+      setSource('Nenhum arquivo importado'); setCatalogInput(null); setCatalogImportedAt(''); setCatalogNotice(''); setTarget(null); setExportSummary(null);
       setRowId(null); setDateRow(null); setEdit('');
       await reload(profile, []);
       setUsers(await store.current!.users());
@@ -266,7 +248,7 @@ export default function CollectionScreen() {
     await run(async () => {
       await queue.current!.flush();
       const current = contextRef.current!;
-      const next = { ...current, drafts: changeSheetDate(current.drafts, id, date, await store.current!.all(), current.profile, current.bucket) };
+      const next = { ...current, drafts: changeSheetDate(current.drafts, id, date, await store.current!.all(), current.profile, current.bucket, true) };
       show(next); persist(next, true);
     }, false);
   }
@@ -285,7 +267,7 @@ export default function CollectionScreen() {
   const buckets = catalog.filter(e => e.block === profile.block && e.cycle === profile.cycle).map(e => e.bucket);
   const bucketIndex = buckets.indexOf(bucket);
   const blocks = [...new Map(catalog.map(e => [JSON.stringify([e.cycle, e.block]), e])).values()];
-  const layout = collectionLayout(screenSize.width, screenSize.height, rowCounts);
+  const layout = collectionLayout(screenSize.width, screenSize.height);
   const issue = saveError || validation;
   const title = panel === 'user' ? 'Usuário' : panel === 'settings' ? 'Configurações' : panel === 'new-block' ? 'Iniciar novo bloco?' : panel === 'export-result' ? 'Exportação concluída' : panel === 'output' ? 'Destino do CSV' : panel === 'block' ? 'Bloco de cruzamento' : panel === 'bucket' ? 'Escolher balde' : panel === 'quantity' ? 'Espigas' : 'Observação';
   const available = buckets.filter(b => !edit || b.includes(edit.trim())).slice(0, 120);
@@ -295,40 +277,39 @@ export default function CollectionScreen() {
       const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
       setScreenSize(previous => previous.width === nextWidth && previous.height === nextHeight ? previous : { width: nextWidth, height: nextHeight });
     }}>
-      <View style={[styles.top, { height: layout.top }]}>
-        <IconButton icon="user" size={layout.headerIcon} box={layout.topButton} label={`Usuário: ${profile.userName || 'Escolher'}`} disabled={busy} onPress={() => openPanel('user')} />
-        <Pressable accessibilityRole="button" accessibilityLabel={`Escolher bloco: ${profile.block}`} disabled={busy} style={styles.block} onPress={() => openPanel('block')}>
-          <Text numberOfLines={1} style={[styles.blockName, { fontSize: layout.font - 1 }]}>{profile.block || 'Escolher BC'}</Text><Feather name="chevron-down" size={16} color={colors.ink} />
+      <View style={[styles.collectionHeader, { height: layout.header }]}>
+        <View style={styles.headerTools}>
+          <IconButton icon="user" size={layout.headerIcon} box={layout.topButton} label={`Usuário: ${profile.userName || 'Escolher'}`} disabled={busy} onPress={() => openPanel('user')} />
+          <IconButton icon="settings" size={layout.headerIcon} box={layout.topButton} label="Configurações" disabled={busy} onPress={() => openPanel('settings')} />
+          <IconButton icon="upload" size={layout.headerIcon} box={layout.topButton} label="Exportar CSV" disabled={busy} onPress={() => void exportCurrent()} />
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Escolher bloco: ${profile.block}`} disabled={busy} style={[styles.block, { height: layout.topButton, left: layout.topButton + 8 }]} onPress={() => openPanel('block')}>
+          <Text numberOfLines={1} style={[styles.blockName, { fontSize: layout.font - 1 }]}>{profile.block || 'Escolher BC'}</Text><Feather name="chevron-down" size={18} color={colors.ink} />
         </Pressable>
-        <IconButton icon="settings" size={layout.headerIcon} box={layout.topButton} label="Configurações" disabled={busy} onPress={() => openPanel('settings')} />
-        <IconButton icon="upload" size={layout.headerIcon} box={layout.topButton} label="Exportar CSV" disabled={busy} onPress={() => void exportCurrent()} />
+        <View style={[styles.bucketNav, { position: 'absolute', top: layout.topButton, height: layout.bucket, left: layout.topButton, right: layout.topButton, gap: 4 }]}>
+          <IconButton icon="chevron-left" box={44} boxHeight={layout.bucket} size={layout.compact ? 30 : 36} label="Balde anterior" disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} />
+          <Pressable accessibilityRole="button" accessibilityLabel={`Balde ${bucket || 'não selecionado'}. Escolher balde`} disabled={busy} style={styles.bucketChoice} onPress={() => openPanel('bucket')}>
+            <Text maxFontSizeMultiplier={1.1} style={[styles.bucketLabel, { fontSize: layout.font - 3 }]}>BALDE</Text><Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15} style={[styles.bucketNumber, { fontSize: layout.compact ? 28 : layout.font * 2 }]}>{bucket || '—'}</Text>
+          </Pressable>
+          <IconButton icon="chevron-right" box={44} boxHeight={layout.bucket} size={layout.compact ? 30 : 36} label="Próximo balde" disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} />
+        </View>
+        {!!bucket && <View style={[styles.headerPriority, { top: layout.topButton + layout.bucket, height: layout.priority, left: layout.topButton, right: layout.topButton }]}>
+          <Pressable accessibilityRole="switch" accessibilityLabel={`Prioridade do balde ${bucket}`}
+            accessibilityState={{ checked: priority, disabled: busy }} disabled={busy} onPress={() => void togglePriority()}
+            style={({ pressed }) => [styles.priorityControl, { minHeight: layout.priority }, (pressed || busy) && { opacity: 0.4 }]}>
+            <Text maxFontSizeMultiplier={1.1} style={[styles.priorityText, { fontSize: layout.font - 2 }]}>Prioridade</Text>
+            <View style={[styles.priorityTrack, priority && styles.priorityOn]}><View style={styles.priorityKnob} /></View>
+            <Text maxFontSizeMultiplier={1.1} style={[styles.priorityState, { fontSize: layout.font - 2 }]}>{priority ? 'Ligado' : 'Desligado'}</Text>
+          </Pressable>
+        </View>}
       </View>
-      <View style={[styles.bucketNav, { height: layout.bucket }]}>
-        <IconButton icon="chevron-left" box={layout.bucket} size={layout.compact ? 30 : 36} label="Balde anterior" disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} />
-        <Pressable accessibilityRole="button" accessibilityLabel={`Balde ${bucket || 'não selecionado'}. Escolher balde`} disabled={busy} style={styles.bucketChoice} onPress={() => openPanel('bucket')}>
-          <Text style={[styles.bucketLabel, { fontSize: layout.font - 3 }]}>BALDE</Text><Text maxFontSizeMultiplier={1.3} style={[styles.bucketNumber, { fontSize: layout.compact ? 28 : layout.font * 2 }]}>{bucket || '—'}</Text>
-        </Pressable>
-        <IconButton icon="chevron-right" box={layout.bucket} size={layout.compact ? 30 : 36} label="Próximo balde" disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} />
-      </View>
-      {!!bucket && <Pressable accessibilityRole="switch" accessibilityLabel={`Prioridade do balde ${bucket}`}
-        accessibilityState={{ checked: priority, disabled: busy }} disabled={busy} onPress={() => void togglePriority()}
-        style={({ pressed }) => [styles.priorityControl, { minHeight: layout.priority }, (pressed || busy) && { opacity: 0.4 }]}>
-        <Text style={[styles.priorityText, { fontSize: layout.font - 2 }]}>Prioridade</Text>
-        <View style={[styles.priorityTrack, priority && styles.priorityOn]}><View style={styles.priorityKnob} /></View>
-        <Text style={[styles.priorityState, { fontSize: layout.font - 2 }]}>{priority ? 'Ligado' : 'Desligado'}</Text>
-      </Pressable>}
-      {drafts.length ? <View style={[styles.groups, { gap: layout.gap }, layout.horizontal && styles.horizontal]}>
+      {drafts.length ? <View style={[styles.groups, { gap: layout.groupGap }, layout.horizontal && styles.horizontal]}>
         {(['EMASC', 'POLI'] as const).map(purpose => {
           const name = purpose === 'EMASC' ? 'Emasculação' : 'Polinização';
-          const rows = drafts.filter(r => r.purpose === purpose).slice(0, rowCounts[purpose]);
-          return <View key={purpose} style={[styles.group, { flex: layout.horizontal ? 1 : 0, height: layout.horizontal ? undefined : layout.heading + layout.labels + (rowCounts[purpose] + 2) * layout.gap + rowCounts[purpose] * layout.rowHeight + 1, gap: layout.gap, paddingTop: layout.gap }]}>
+          const rows = drafts.filter(r => r.purpose === purpose).slice(0, VISIBLE_ROWS);
+          return <View key={purpose} style={[styles.group, { gap: layout.gap, paddingTop: layout.gap }]}>
             <View style={[styles.groupHeading, { height: layout.heading }]}>
-              <View style={styles.rowControls}>
-                <IconButton icon="plus" label={`Adicionar linha de ${name}`} size={22} boxHeight={layout.heading} disabled={busy || rowCounts[purpose] >= 4} onPress={() => resizeRows(purpose, 1)} />
-                <IconButton icon="minus" label={`Ocultar última linha de ${name}; os dados são mantidos`} size={22} boxHeight={layout.heading} disabled={busy || rowCounts[purpose] <= 1} onPress={() => resizeRows(purpose, -1)} />
-              </View>
               <Text maxFontSizeMultiplier={1.15} numberOfLines={1} adjustsFontSizeToFit style={[styles.groupTitle, { fontSize: layout.titleFont }]}>{name}</Text>
-              <View style={styles.headingBalance} />
             </View>
             <View style={[styles.rowLabels, { height: layout.labels }]}>
               <Text style={[styles.label, styles.equalColumn, { fontSize: layout.font - 2 }]}>Data</Text>
@@ -347,8 +328,8 @@ export default function CollectionScreen() {
                   <Text maxFontSizeMultiplier={1.15} numberOfLines={1} adjustsFontSizeToFit style={[styles.quantityText, { fontSize: layout.fieldFont + 3 }]}>{row.quantity || '—'}</Text>
                 </Pressable>
                 <View style={styles.counterArrows}>
-                  <IconButton icon="arrow-up" size={Math.min(26, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={layout.rowHeight / 2} label={`Somar espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) >= MAX_QUANTITY} onPress={() => step(row, 1)} />
-                  <IconButton icon="arrow-down" size={Math.min(26, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={layout.rowHeight / 2} label={`Diminuir espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) <= 0} onPress={() => step(row, -1)} />
+                  <IconButton icon="arrow-up" size={Math.min(26, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={(layout.rowHeight - 2) / 2} label={`Somar espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) >= MAX_QUANTITY} onPress={() => step(row, 1)} />
+                  <IconButton icon="arrow-down" size={Math.min(26, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={(layout.rowHeight - 2) / 2} label={`Diminuir espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) <= 0} onPress={() => step(row, -1)} />
                 </View>
               </View>
             </View>)}
@@ -409,8 +390,13 @@ export default function CollectionScreen() {
               {panel === 'settings' && <>
                 <View style={styles.settingsSection}>
                   <Text style={styles.settingsTitle}>Cadastro de baldes</Text>
-                  <Text style={styles.hint}>{source} · {catalog.length} baldes</Text>
-                  <Action disabled={busy} text="Importar / atualizar baldes" onPress={() => void importCatalog()} />
+                  <View style={styles.catalogButtons}>
+                    <View style={styles.catalogButton}><Action disabled={busy} icon="folder" text="Escolher arquivo" onPress={() => void importCatalog()} /></View>
+                    <View style={styles.catalogButton}><Action disabled={busy || !catalogInput} icon="refresh-cw" text="Atualizar" onPress={() => void importCatalog(true)} /></View>
+                  </View>
+                  <Text style={styles.filename}>{source}</Text>
+                  {!!catalogImportedAt && <Text style={styles.hint}>Última importação: {new Date(catalogImportedAt).toLocaleString('pt-BR')}</Text>}
+                  {!!catalogNotice && <Text accessibilityLiveRegion="polite" style={styles.hint}>{catalogNotice}</Text>}
                 </View>
                 <View style={[styles.settingsSection, styles.settingsDivider]}>
                   <Text style={styles.settingsTitle}>Saída CSV</Text>
@@ -471,20 +457,23 @@ export default function CollectionScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.paper }, center: { flex: 1, padding: 20, gap: 14, justifyContent: 'center', alignItems: 'center' },
   screen: { flex: 1, width: '100%', maxWidth: 1100, alignSelf: 'center', paddingHorizontal: 10, paddingBottom: 4 },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 48 },
+  collectionHeader: { position: 'relative', flexShrink: 0 },
+  headerTools: { position: 'absolute', left: 0, top: 0 },
+  headerPriority: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  catalogButtons: { flexDirection: 'row', gap: 10 }, catalogButton: { flex: 1 },
   iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  block: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', gap: 3, alignItems: 'center', justifyContent: 'center' },
+  block: { position: 'absolute', right: 0, top: 0, minWidth: 0, minHeight: 44, flexDirection: 'row', gap: 3, alignItems: 'center', justifyContent: 'flex-end' },
   blockName: { flexShrink: 1, color: colors.ink, fontWeight: '700', fontSize: 15 },
   bucketNav: { height: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 2 },
   bucketArrow: { width: 56, height: 56 },
   bucketChoice: { flexShrink: 1, minWidth: 70, alignItems: 'center', justifyContent: 'center' }, bucketLabel: { fontSize: 11, color: colors.muted, letterSpacing: 1 },
   bucketNumber: { fontSize: 35, fontWeight: '700', color: colors.ink, fontVariant: ['tabular-nums'] },
   priorityControl: { minHeight: 44, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8 },
-  priorityText: { fontSize: 12, color: colors.ink }, priorityState: { fontSize: 11, color: colors.ink, minWidth: 54 },
-  priorityTrack: { width: 36, height: 20, borderRadius: 12, borderWidth: 1, borderColor: colors.ink, backgroundColor: colors.paper, padding: 2, justifyContent: 'center', alignItems: 'flex-start' },
+  priorityText: { fontSize: 12, color: colors.ink }, priorityState: { fontSize: 11, color: colors.ink },
+  priorityTrack: { width: 50, height: 30, borderRadius: 12, borderWidth: 1, borderColor: colors.ink, backgroundColor: colors.paper, padding: 2, justifyContent: 'center', alignItems: 'flex-start' },
   priorityOn: { backgroundColor: '#b4bd00', alignItems: 'flex-end' },
-  priorityKnob: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.ink },
-  groups: { flex: 1, justifyContent: 'space-evenly' }, horizontal: { flexDirection: 'row' },
+  priorityKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.ink },
+  groups: { flex: 1 }, horizontal: { flexDirection: 'row' },
   group: { flex: 1, minWidth: 0, borderTopWidth: 1, borderColor: colors.line },
   groupHeading: { flexDirection: 'row', alignItems: 'center' },
   rowControls: { width: 88, flexDirection: 'row' }, headingBalance: { width: 88 },
@@ -493,7 +482,7 @@ const styles = StyleSheet.create({
   bottomNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderColor: colors.line },
   bottomButton: { minHeight: 44, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },
   groupTitle: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: '700', color: colors.ink },
-  rowLabels: { flexDirection: 'row', gap: 5, alignItems: 'center', minHeight: 20 }, label: { fontSize: 12, color: colors.muted, fontWeight: '600' },
+  rowLabels: { flexDirection: 'row', gap: 6, alignItems: 'center', minHeight: 20 }, label: { fontSize: 12, color: colors.muted, fontWeight: '600' },
   row: { flexDirection: 'row', gap: 6, alignItems: 'stretch' },
   dateColumn: { flex: 1, minWidth: 66 }, countColumn: { width: 132 }, obsColumn: { flex: 0.85, minWidth: 66 },
   field: { height: '100%', borderWidth: 1, borderColor: colors.line, backgroundColor: colors.field, borderRadius: 8, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
@@ -509,6 +498,7 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   modalTitle: { flex: 1, fontSize: 20, color: colors.ink, fontWeight: '700' }, modalContent: { gap: 12, paddingBottom: 10 },
   action: { minHeight: 44, padding: 11, borderWidth: 1, borderColor: colors.line, borderRadius: 8, backgroundColor: colors.field, justifyContent: 'center' },
+  actionWithIcon: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8 }, actionIconText: { flexShrink: 1 },
   actionText: { fontSize: 15, color: colors.ink }, hint: { fontSize: 13, lineHeight: 19, color: colors.muted }, filename: { fontSize: 13, color: colors.ink },
   input: { minHeight: 48, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.ink, fontSize: 16 },
   multiline: { minHeight: 100, textAlignVertical: 'top' }, largeInput: { fontSize: 30, textAlign: 'center' },

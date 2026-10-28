@@ -2,6 +2,11 @@ import type { Draft, Evaluation, Profile, Purpose } from './model';
 
 export type DateSuggestions = Record<Purpose, string[]>;
 export const MAX_ROWS = 4;
+export const VISIBLE_ROWS = 2;
+export function visibleSheet(sheet: Draft[]): Draft[] {
+  const counts = { EMASC: 0, POLI: 0 };
+  return sheet.filter(row => counts[row.purpose]++ < VISIBLE_ROWS);
+}
 export type RowCounts = Record<Purpose, number>;
 export const defaultRowCounts = (): RowCounts => ({ EMASC: 2, POLI: 2 });
 export function normalizeRowCounts(value: Partial<RowCounts>): RowCounts {
@@ -49,10 +54,10 @@ export function suggestMissingDates(sheet: Draft[], dates: DateSuggestions): Dra
 export function collectionRows(sheet: Draft[]): Draft[] {
   return sheet.filter(r => r.date || r.observation.trim() || (r.quantity.trim() !== '' && Number(r.quantity) !== 0));
 }
-export function changeSheetDate(sheet: Draft[], id: string, date: string, records: Evaluation[], profile: Profile, bucket: string): Draft[] {
+export function changeSheetDate(sheet: Draft[], id: string, date: string, records: Evaluation[], profile: Profile, bucket: string, visibleOnly = false): Draft[] {
   const row = sheet.find(r => r.rowId === id); if (!row) return sheet;
   if (row.date === date) return sheet;
-  if (sheet.some(r => r.rowId !== id && r.purpose === row.purpose && r.date === date))
+  if ((visibleOnly ? visibleSheet(sheet) : sheet).some(r => r.rowId !== id && r.purpose === row.purpose && r.date === date))
     throw new Error('Esta data já está em outra linha da mesma finalidade.');
   const saved = records.find(r => r.user_id === profile.userId && r.cycle === profile.cycle && r.block === profile.block && r.bucket === bucket && r.purpose === row.purpose && r.date === date && (r.round_id ?? '') === (row.roundId ?? ''));
   return sheet.map(r => r.rowId === id ? { ...r, date,

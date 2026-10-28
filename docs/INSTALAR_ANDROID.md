@@ -1,13 +1,13 @@
 # Instalar a versão de teste no Android
 
-## Versão 0.7 pelo GitHub
+## Versão 0.8 pelo GitHub
 
 Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK Android**. Baixe **RegistroBC-Android-celular-tablet**, extraia o ZIP e abra `RegistroBC-GitHub.apk`. O nome no celular é **Registro de BC (GitHub)**, agora com uma espiga dourada no ícone. Instale como atualização da variante GitHub que já está no aparelho; não desinstale nem limpe os dados.
 
 1. Toque no usuário no canto superior esquerdo e informe seu nome.
-2. Em Configurações → **Importar / atualizar baldes**, selecione o cadastro com `Nome do Bloco` e `Balde`. Atualize quando desejar; a nova lista substitui os baldes de navegação sem apagar avaliações. Não é necessário atualizar o cadastro após exportar.
+2. Em Configurações → **Escolher arquivo**, selecione o cadastro com `Nome do Bloco` e `Balde`. Atualize quando desejar; a nova lista substitui os baldes de navegação sem apagar avaliações. Não é necessário atualizar o cadastro após exportar.
 3. Escolha o BC pelo nome no topo e navegue pelos baldes. O botão discreto de prioridade abaixo do número fica em `#b4bd00` quando ligado. Cada balde mantém sua última escolha, mesmo ao iniciar outra coleta ou reiniciar o app.
-4. Escolha até quatro datas para cada finalidade; os campos vazios dos próximos baldes recebem as últimas datas escolhidas. As avaliações existentes são preservadas. Ajuste as quantidades com número com as setas à direita. Tocar no número permite digitá-lo; a observação oferece opções e texto livre.
+4. Escolha duas datas para cada finalidade; os campos vazios dos próximos baldes recebem as últimas datas escolhidas. As avaliações existentes são preservadas. Ajuste as quantidades com número com as setas à direita. Tocar no número permite digitá-lo; a observação oferece opções e texto livre.
 5. As alterações ficam gravadas no aparelho automaticamente; confira o indicador no rodapé. Datas são sugeridas para os próximos baldes e as quantidades começam em zero.
 6. Em Configurações → **Escolher destino** / **Alterar destino**, escolha uma pasta, crie o arquivo ou selecione o CSV existente. O destino é compartilhado pelos usuários do aparelho.
 7. Exporte para atualizar `REGISTRO_BC_[ID_DO_APARELHO].csv`, com todos os usuários e `Prioridade` (`SIM`/`NÃO`). O pop-up informa o total de registros, os novos desde a última exportação confirmada e pede conferir a sincronização no OneDrive. A gravação confirmada limpa a coleta e volta ao primeiro balde, preservando histórico, prioridades, cadastro e destino.
@@ -33,8 +33,14 @@ Os APKs funcionam sem o VS Code ou um servidor de desenvolvimento aberto. A cole
 
 Para atualizações, use um novo APK com o mesmo identificador e a mesma assinatura. Evite desinstalar ou limpar os dados entre versões: isso remove o banco local. Antes de qualquer reinstalação, exporte as coletas e confira a cópia no computador.
 
-## Layout da versão 0.7
+## Layout e cadastro da versão 0.8
 
-Duas linhas visíveis por finalidade inicialmente, ajustáveis entre uma e quatro por + e −. Ocultar uma linha mantém seus dados no banco, nos rascunhos e no CSV; uma linha preenchida pede confirmação. + a exibe novamente. A quantidade de linhas é mantida ao trocar de balde, reiniciar ou exportar, separada por coletor e bloco. O novo bloco redefinirá essa preferência. A atualização preserva linhas antigas preenchidas.
+A tela mostra duas linhas fixas de Emasculação e duas de Polinização. Não há +/− para linhas. Os campos mais altos ocupam a área disponível sem rolagem na tela de coleta; em horizontal com largura suficiente, as finalidades ficam lado a lado. As colunas Data, Observação e Espigas têm a mesma largura e as setas de espigas ficam juntas à direita do número. Usuário, configurações e exportação ficam em coluna no canto superior esquerdo; a seleção de BC fica no canto superior direito. O controle de prioridade é maior e mantém a última escolha.
 
-As colunas Data, Observação e Espigas têm a mesma largura. As setas do contador ficam juntas à direita do número. Fontes e botões superiores maiores, títulos centralizados, navegação também inferior sem repetir o número do balde. A tela de coleta não usa rolagem; mede a área disponível e compacta as linhas conforme a quantidade. Em orientação horizontal com largura suficiente, as finalidades ficam lado a lado. Em áreas muito pequenas e com quatro linhas, os controles ficam mais compactos.
+Dados e rascunhos das antigas terceira e quarta linhas são preservados. Suas avaliações já coletadas permanecem no CSV; os registros históricos não são excluídos pela mudança de layout.
+
+No cadastro de baldes, **Escolher arquivo** seleciona o documento original. **Atualizar**, ao lado, relê o mesmo documento sem abrir o seletor e registra a última importação. A fonte e a lista só são substituídas depois da leitura e validação completas. Se o documento estiver sem acesso ou inválido, o cadastro anterior e as avaliações são preservados. A importação continua manual; exportar ou iniciar outra coleta não relê o arquivo sozinho.
+
+Na primeira utilização depois de atualizar uma versão antiga, use **Escolher arquivo** uma vez para autorizar o acesso ao documento original. Antes disso, **Atualizar** fica desabilitado, mas o último cadastro já importado continua disponível offline. Se o provedor perder o vínculo (arquivo movido/substituído ou permissão revogada), escolha o arquivo novamente. Em arquivos do OneDrive, a leitura depende do conteúdo disponibilizado pelo provedor; confira que a edição foi sincronizada.
+
+O novo bloco, após confirmação de limpeza, também esquece o vínculo com o arquivo de entrada. Os arquivos externos não são excluídos.
