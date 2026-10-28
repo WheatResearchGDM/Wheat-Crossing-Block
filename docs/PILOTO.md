@@ -23,7 +23,7 @@
 - Cancelar Iniciar novo bloco e conferir dados/destinos preservados. Em dados sintéticos, confirmar a limpeza, reiniciar o app e conferir banco, histórico, prioridades e destinos vazios. Preservar nomes de coletores, identidade do aparelho e arquivos externos. Importar outro bloco e conferir primeira exportação com apenas dados novos.
 - A adaptação da macro Excel para o novo CSV ainda está pendente.
 
-O teste visual da versão 0.8 em aparelho e a integração com o provedor OneDrive real continuam necessários. Os testes usam SQLite real e cobrem recuperação, transações, sequência de gravação, usuários, catálogo substituído, CSV, limpeza de rodadas e exclusão de usuários. O bundle Android não substitui o teste em aparelho.
+O teste visual da versão 0.9 em aparelho e a integração com o provedor OneDrive real continuam necessários. Os testes usam SQLite real e cobrem recuperação, transações, sequência de gravação, usuários, catálogo substituído, CSV, limpeza de rodadas e exclusão de usuários. O bundle Android não substitui o teste em aparelho.
 
 ## Verificações da versão 0.7 em aparelho
 
@@ -48,3 +48,11 @@ TypeScript, lint e 44 testes passaram; incluem SQLite persistente, migração e 
 - Iniciar novo bloco com dados sintéticos e confirmar que esquece o arquivo de entrada sem excluir o documento externo.
 
 50 testes automatizados, TypeScript e lint passaram. A conferência do APK e a compilação nativa não substituem a validação visual e dos documentos no aparelho.
+
+## Verificações da versão 0.9 em aparelho
+
+- Instalar CrossingBlock.apk por cima da variante GitHub anterior e conferir que o ícone passou a se chamar Crossing Block, com coletas, usuário, cadastro, prioridade e destinos mantidos.
+- Conferir o número do balde maior e sem setas laterais. Tocar no número para abrir a seleção, filtrar e escolher outro balde.
+- Conferir os botões maiores Anterior/Próximo no rodapé e os limites de navegação, sem repetir o número do balde.
+- Conferir as setas maiores de espigas à direita do número, inclusive os limites 0–100000.
+- Conferir duas linhas fixas e ausência de rolagem em celular/tablet, orientação vertical e horizontal. Comparar CSV antes/depois da atualização.

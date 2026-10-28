@@ -24,6 +24,14 @@ Conferidos o digest SHA-256 do ZIP, a estrutura do APK, o bundle embarcado, as b
 
 Primeira execução concluída com sucesso: [ver execução](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40144356972). [Baixar o artefato com o APK](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40144356972/artifacts/12580640662). O pacote gerado foi conferido: integridade do ZIP, estrutura do APK, bloco de assinatura, JavaScript embarcado e bibliotecas ARM de 32/64 bits. A instalação e o teste de campo no aparelho continuam no roteiro do piloto.
 
+## Versão 0.9.0 — Crossing Block
+
+[Baixar instalador completo](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40730442470/artifacts/12833779828). [Compilação concluída](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40730442470), código `c79b962`. Extraia e instale `CrossingBlock.apk` por cima da variante GitHub anterior, sem desinstalar.
+
+O nome no aparelho é Crossing Block. O pacote `com.wheatresearchgdm.crossingblock.github`, os esquemas, o banco, o certificado e o padrão de nomes CSV são preservados. Número do balde maior e sem setas laterais; tocar no número abre a seleção. Botões Anterior/Próximo maiores no rodapé e setas de espigas maiores à direita da quantidade. As duas linhas por finalidade, o cabeçalho vertical e o cadastro Escolher arquivo/Atualizar continuam.
+
+TypeScript, lint e 50 testes passaram localmente e no GitHub. Conferidos digest do ZIP, CRC do APK, manifesto 0.9.0/código 9, pacote, recurso de nome Crossing Block, certificado igual aos anteriores, bundle e bibliotecas ARM 32/64. SHA-256 do APK: `274580213dae85063bbfffee1395f0341033a852cc65fa1a0b88952f0d8b3dba`. A avaliação visual em dispositivo físico continua no piloto.
+
 ## Versão 0.8.0
 
 [Baixar instalador completo](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40708054126/artifacts/12824938533). [Compilação concluída](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40708054126), código `3ba9ff5`.

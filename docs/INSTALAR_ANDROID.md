@@ -2,7 +2,7 @@
 
 ## Versão 0.9 pelo GitHub
 
-Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK Android**. Baixe **RegistroBC-Android-celular-tablet**, extraia o ZIP e abra `RegistroBC-GitHub.apk`. O nome no celular é **Registro de BC (GitHub)**, agora com uma espiga dourada no ícone. Instale como atualização da variante GitHub que já está no aparelho; não desinstale nem limpe os dados.
+Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK Android**. Baixe **CrossingBlock-Android-celular-tablet**, extraia o ZIP e abra `CrossingBlock.apk`. O nome no celular é **Crossing Block**, agora com uma espiga dourada no ícone. Instale como atualização da variante GitHub que já está no aparelho; não desinstale nem limpe os dados.
 
 1. Toque no usuário no canto superior esquerdo e informe seu nome.
 2. Em Configurações → **Escolher arquivo**, selecione o cadastro com `Nome do Bloco` e `Balde`. Atualize quando desejar; a nova lista substitui os baldes de navegação sem apagar avaliações. Não é necessário atualizar o cadastro após exportar.
