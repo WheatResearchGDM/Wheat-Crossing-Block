@@ -24,6 +24,16 @@ Conferidos o digest SHA-256 do ZIP, a estrutura do APK, o bundle embarcado, as b
 
 Primeira execução concluída com sucesso: [ver execução](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40144356972). [Baixar o artefato com o APK](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40144356972/artifacts/12580640662). O pacote gerado foi conferido: integridade do ZIP, estrutura do APK, bloco de assinatura, JavaScript embarcado e bibliotecas ARM de 32/64 bits. A instalação e o teste de campo no aparelho continuam no roteiro do piloto.
 
+## Versão 0.8.0
+
+[Baixar instalador completo](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40708054126/artifacts/12824938533). [Compilação concluída](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40708054126), código `3ba9ff5`.
+
+Duas linhas fixas por finalidade, sem +/−, campos mais altos e prioridade maior. Cabeçalho com usuário, configurações e exportar em coluna à esquerda e BC no canto superior direito. As linhas ocupam a área útil medida sem rolagem na tela principal. As avaliações e rascunhos das antigas terceira/quarta linhas são preservados; o CSV continua incluindo os registros históricos.
+
+Configurações: Escolher arquivo e Atualizar lado a lado, nome do documento e última importação. O Android guarda a permissão persistente de leitura do documento original, sem copiar o cadastro para o cache. Atualizar relê o mesmo URI. Leitura, limite de 5 MB e validação precedem a substituição atômica da lista e do vínculo; falhas mantêm o cadastro e as avaliações. A primeira seleção após atualizar uma versão antiga é necessária para lembrar o acesso. A ação continua manual e depende do conteúdo oferecido pelo provedor.
+
+TypeScript, lint e 50 testes passaram localmente e no GitHub. APK conferido: digest do ZIP, CRC, manifesto 0.8.0/código 8, pacote GitHub, certificado igual às versões anteriores, bundle com nova tela/cadastro, método nativo de releitura e bibliotecas ARM 32/64. SHA-256: `0125fe9d7a3d5c860d2d82d8b996d0c6fd2fcab956c4e1d2797a9b7e78f2d3ca`. A instalação, a avaliação visual e a releitura no provedor OneDrive real continuam no roteiro de piloto.
+
 ## Versão 0.7.0
 
 [Baixar instalador completo](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40683427339/artifacts/12814123776). [Compilação concluída](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40683427339), código `1f066c5`.
