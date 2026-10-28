@@ -3,7 +3,7 @@ module.exports = ({ config }) => {
   if (process.env.APP_VARIANT !== 'github') return config;
   return {
     ...config,
-    name: 'Registro de BC (GitHub)',
+    name: 'Crossing Block',
     scheme: 'registrobcgithub',
     android: { ...config.android, package: 'com.wheatresearchgdm.crossingblock.github' },
   };

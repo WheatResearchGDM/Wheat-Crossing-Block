@@ -69,13 +69,13 @@ jobs:
       - name: Preparar arquivo para download
         run: |
           mkdir -p apk
-          cp android/app/build/outputs/apk/release/app-release.apk apk/RegistroBC-GitHub.apk
+          cp android/app/build/outputs/apk/release/app-release.apk apk/CrossingBlock.apk
       - name: Disponibilizar APK
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: RegistroBC-Android-${{ inputs.target }}
-          path: apk/RegistroBC-GitHub.apk
+          name: CrossingBlock-Android-${{ inputs.target }}
+          path: apk/CrossingBlock.apk
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -88,7 +88,7 @@ jobs:
             echo
             echo "[Baixar o pacote de instalacao]($DOWNLOAD_URL)"
             echo
-            echo 'Extraia o ZIP e instale RegistroBC-GitHub.apk no Android.'
-            echo 'Nome no aparelho: Registro de BC (GitHub).'
+            echo 'Extraia o ZIP e instale CrossingBlock.apk no Android.'
+            echo 'Nome no aparelho: Crossing Block.'
             echo 'Esta variante usa assinatura de teste e armazena suas coletas separadamente da variante Expo.'
           } >> "$GITHUB_STEP_SUMMARY"

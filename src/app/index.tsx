@@ -139,7 +139,7 @@ export default function CollectionScreen() {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); Keyboard.dismiss(); setNotice('');
     try { if (save) await flush(); await action(); }
-    catch (e) { Alert.alert('Registro de BC', message(e)); }
+    catch (e) { Alert.alert('Crossing Block', message(e)); }
     finally { busyRef.current = false; setBusy(false); }
   }
   function change(id: string, patch: Partial<Draft>) {
@@ -287,11 +287,9 @@ export default function CollectionScreen() {
           <Text numberOfLines={1} style={[styles.blockName, { fontSize: layout.font - 1 }]}>{profile.block || 'Escolher BC'}</Text><Feather name="chevron-down" size={18} color={colors.ink} />
         </Pressable>
         <View style={[styles.bucketNav, { position: 'absolute', top: layout.topButton, height: layout.bucket, left: layout.topButton, right: layout.topButton, gap: 4 }]}>
-          <IconButton icon="chevron-left" box={44} boxHeight={layout.bucket} size={layout.compact ? 30 : 36} label="Balde anterior" disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} />
           <Pressable accessibilityRole="button" accessibilityLabel={`Balde ${bucket || 'não selecionado'}. Escolher balde`} disabled={busy} style={styles.bucketChoice} onPress={() => openPanel('bucket')}>
-            <Text maxFontSizeMultiplier={1.1} style={[styles.bucketLabel, { fontSize: layout.font - 3 }]}>BALDE</Text><Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15} style={[styles.bucketNumber, { fontSize: layout.compact ? 28 : layout.font * 2 }]}>{bucket || '—'}</Text>
+            <Text maxFontSizeMultiplier={1.1} style={[styles.bucketLabel, { fontSize: layout.font - 3 }]}>BALDE</Text><Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.15} style={[styles.bucketNumber, { fontSize: layout.bucketFont }]}>{bucket || '—'}</Text>
           </Pressable>
-          <IconButton icon="chevron-right" box={44} boxHeight={layout.bucket} size={layout.compact ? 30 : 36} label="Próximo balde" disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} />
         </View>
         {!!bucket && <View style={[styles.headerPriority, { top: layout.topButton + layout.bucket, height: layout.priority, left: layout.topButton, right: layout.topButton }]}>
           <Pressable accessibilityRole="switch" accessibilityLabel={`Prioridade do balde ${bucket}`}
@@ -328,8 +326,8 @@ export default function CollectionScreen() {
                   <Text maxFontSizeMultiplier={1.15} numberOfLines={1} adjustsFontSizeToFit style={[styles.quantityText, { fontSize: layout.fieldFont + 3 }]}>{row.quantity || '—'}</Text>
                 </Pressable>
                 <View style={styles.counterArrows}>
-                  <IconButton icon="arrow-up" size={Math.min(26, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={(layout.rowHeight - 2) / 2} label={`Somar espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) >= MAX_QUANTITY} onPress={() => step(row, 1)} />
-                  <IconButton icon="arrow-down" size={Math.min(26, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={(layout.rowHeight - 2) / 2} label={`Diminuir espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) <= 0} onPress={() => step(row, -1)} />
+                  <IconButton icon="arrow-up" size={Math.min(32, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={(layout.rowHeight - 2) / 2} label={`Somar espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) >= MAX_QUANTITY} onPress={() => step(row, 1)} />
+                  <IconButton icon="arrow-down" size={Math.min(32, Math.floor(layout.rowHeight / 2) - 2)} boxHeight={(layout.rowHeight - 2) / 2} label={`Diminuir espigas ${name} ${row.date}`} disabled={busy || Number(row.quantity) <= 0} onPress={() => step(row, -1)} />
                 </View>
               </View>
             </View>)}
@@ -338,10 +336,10 @@ export default function CollectionScreen() {
       </View> : <View style={styles.center}><Action text="Importar cadastro de baldes" disabled={busy} onPress={() => openPanel('settings')} /></View>}
       {!!bucket && <View style={[styles.bottomNav, { height: layout.footer }]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Balde anterior, navegação inferior" accessibilityState={{ disabled: busy || bucketIndex <= 0 }} disabled={busy || bucketIndex <= 0} onPress={() => void navigate(buckets[bucketIndex - 1])} style={({ pressed }) => [styles.bottomButton, { minHeight: layout.footer }, (pressed || busy || bucketIndex <= 0) && { opacity: 0.4 }]}>
-          <Feather name="chevron-left" size={28} color={colors.ink} /><Text style={[styles.actionText, { fontSize: layout.font }]}>Anterior</Text>
+          <Feather name="chevron-left" size={32} color={colors.ink} /><Text style={[styles.actionText, { fontSize: layout.footerFont }]}>Anterior</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Próximo balde, navegação inferior" accessibilityState={{ disabled: busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1 }} disabled={busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1} onPress={() => void navigate(buckets[bucketIndex + 1])} style={({ pressed }) => [styles.bottomButton, { minHeight: layout.footer }, (pressed || busy || bucketIndex < 0 || bucketIndex >= buckets.length - 1) && { opacity: 0.4 }]}>
-          <Text style={[styles.actionText, { fontSize: layout.font }]}>Próximo</Text><Feather name="chevron-right" size={28} color={colors.ink} />
+          <Text style={[styles.actionText, { fontSize: layout.footerFont }]}>Próximo</Text><Feather name="chevron-right" size={32} color={colors.ink} />
         </Pressable>
       </View>}
       <Pressable disabled={!issue || busy} onPress={() => void run(async () => {}, true)} accessibilityRole={issue ? 'button' : undefined} style={[styles.status, { height: layout.status, minHeight: layout.status, paddingTop: 0 }]}>
@@ -479,8 +477,8 @@ const styles = StyleSheet.create({
   rowControls: { width: 88, flexDirection: 'row' }, headingBalance: { width: 88 },
   equalColumn: { flex: 1, minWidth: 0 },
   counterArrows: { alignItems: 'center', justifyContent: 'center' },
-  bottomNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderColor: colors.line },
-  bottomButton: { minHeight: 44, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  bottomNav: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  bottomButton: { flex: 1, minHeight: 44, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: colors.line, borderRadius: 10 },
   groupTitle: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: '700', color: colors.ink },
   rowLabels: { flexDirection: 'row', gap: 6, alignItems: 'center', minHeight: 20 }, label: { fontSize: 12, color: colors.muted, fontWeight: '600' },
   row: { flexDirection: 'row', gap: 6, alignItems: 'stretch' },

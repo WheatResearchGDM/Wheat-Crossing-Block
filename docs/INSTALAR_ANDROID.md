@@ -1,6 +1,6 @@
 # Instalar a versão de teste no Android
 
-## Versão 0.8 pelo GitHub
+## Versão 0.9 pelo GitHub
 
 Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK Android**. Baixe **RegistroBC-Android-celular-tablet**, extraia o ZIP e abra `RegistroBC-GitHub.apk`. O nome no celular é **Registro de BC (GitHub)**, agora com uma espiga dourada no ícone. Instale como atualização da variante GitHub que já está no aparelho; não desinstale nem limpe os dados.
 
@@ -44,3 +44,11 @@ No cadastro de baldes, **Escolher arquivo** seleciona o documento original. **At
 Na primeira utilização depois de atualizar uma versão antiga, use **Escolher arquivo** uma vez para autorizar o acesso ao documento original. Antes disso, **Atualizar** fica desabilitado, mas o último cadastro já importado continua disponível offline. Se o provedor perder o vínculo (arquivo movido/substituído ou permissão revogada), escolha o arquivo novamente. Em arquivos do OneDrive, a leitura depende do conteúdo disponibilizado pelo provedor; confira que a edição foi sincronizada.
 
 O novo bloco, após confirmação de limpeza, também esquece o vínculo com o arquivo de entrada. Os arquivos externos não são excluídos.
+
+## Versão 0.9 — Crossing Block
+
+O nome exibido passa a ser **Crossing Block**. O identificador Android, o banco, o nome dos arquivos CSV e a assinatura da variante GitHub são preservados, permitindo instalar por cima da versão anterior. O instalador passa a se chamar `CrossingBlock.apk`.
+
+O número do balde é maior, sem setas ao lado; tocar no número continua abrindo a escolha de balde. A navegação fica nos botões maiores Anterior e Próximo do rodapé, sem repetir o número. As setas de espigas são maiores, permanecendo à direita da caixa numérica. Continuam duas linhas fixas por finalidade, o controle de prioridade e o cabeçalho vertical, com BC no canto superior direito. A altura dos campos se ajusta à área disponível.
+
+O cadastro continua com Escolher arquivo e Atualizar. A opção Escolher CSV existente pode permitir selecionar um arquivo no OneDrive mesmo quando Criar arquivo ou Escolher pasta só mostram locais internos. A possibilidade de atualizar esse CSV depende de o provedor conceder escrita, e o app verifica o conteúdo gravado. Downloads não sincroniza automaticamente com OneDrive.

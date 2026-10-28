@@ -11,6 +11,8 @@ test('variante GitHub tem identidade separada e conserva configuracao de coleta'
     const result = config({ config: base });
     assert.equal(result.android.package, 'com.wheatresearchgdm.crossingblock.github');
     assert.equal(result.scheme, 'registrobcgithub');
+    assert.equal(result.name, 'Crossing Block');
+    assert.equal(require('../app.json').expo.name, 'Crossing Block');
     assert.deepEqual(result.plugins, base.plugins);
     assert.equal(base.android.package, 'com.wheatresearchgdm.crossingblock');
   } finally { if (original === undefined) delete process.env.APP_VARIANT; else process.env.APP_VARIANT = original; }
