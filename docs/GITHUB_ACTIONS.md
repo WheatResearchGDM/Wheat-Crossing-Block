@@ -67,3 +67,12 @@ Esta variante usa o identificador `com.wheatresearchgdm.crossingblock.github`, d
 O workflow manual é disponibilizado na `main` para o botão aparecer na interface do GitHub. O código é obtido da referência selecionada. O arquivo também acompanha a branch do aplicativo. Apenas dados sintéticos e código estão no repositório; CSVs operacionais e bancos locais continuam ignorados.
 
 O artefato fica disponível por 30 dias, conforme a retenção configurada. Para preservá-lo por mais tempo, baixe uma cópia. A compilação inicial pode demorar vários minutos; builds seguintes podem aproveitar o cache do Gradle.
+
+
+## Versão 0.9.1 — exportação com espigas
+
+[Baixar instalador completo](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40924204725/artifacts/12919952711). [Compilação concluída](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/40924204725), código `cddc32f`. Extraia e instale `CrossingBlock.apk` sobre a variante GitHub anterior, sem desinstalar.
+
+CSV e Enviar cópia dos dados incluem somente quantidades maiores ou iguais a 1. Data ou observação com zero espigas não entram no arquivo; o histórico interno é preservado. Totais e novos registros consideram as linhas incluídas. Sem nenhuma linha com espigas, o app avisa e mantém a coleta. A confirmação continua verificando todas as revisões para preservar alterações feitas durante a exportação.
+
+TypeScript, lint e 52 testes passaram localmente e no GitHub. Conferidos digest do ZIP, CRC do APK, manifesto 0.9.1/código 10, pacote, nome, certificado igual aos anteriores, bundle e bibliotecas ARM 32/64. SHA-256 do APK: `b100e25a6006faeed1aeeac59f74a30a820ccfae8b67193cef168e2c075c1758`. Não houve teste em dispositivo físico ou com o provedor OneDrive.
