@@ -2,7 +2,7 @@
   "expo": {
     "name": "Crossing Block",
     "slug": "wheat-crossing-block",
-    "version": "0.9.0",
+    "version": "0.9.1",
     "orientation": "default",
     "icon": "./assets/wheat-icon.png",
     "userInterfaceStyle": "light",
@@ -10,7 +10,7 @@
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 9,
+      "versionCode": 10,
       "adaptiveIcon": {
         "backgroundColor": "#123047",
         "foregroundImage": "./assets/wheat-foreground.png",

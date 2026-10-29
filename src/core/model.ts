@@ -51,6 +51,9 @@ export function validateDrafts(profile: Profile, bucket: string, drafts: Draft[]
   return selected;
 }
 
+export function exportableRecords(records: Evaluation[]): Evaluation[] {
+  return records.filter(row => row.quantity >= 1);
+}
 export function toCsv(records: Evaluation[]): string {
   // Quoting alone does not stop spreadsheet formula execution in user-entered text.
   const quote = (value: unknown) => {
@@ -58,7 +61,7 @@ export function toCsv(records: Evaluation[]): string {
     if (/^[\s]*[=+\-@]/.test(text)) text = "'" + text;
     return `"${text.replace(/"/g, '""')}"`;
   };
-  return '\ufeff' + [OUTPUT_HEADERS.join(';'), ...[...records].sort((a, b) =>
+  return '\ufeff' + [OUTPUT_HEADERS.join(';'), ...exportableRecords(records).sort((a, b) =>
     a.block.localeCompare(b.block) || Number(a.bucket) - Number(b.bucket) || a.date.localeCompare(b.date) || a.purpose.localeCompare(b.purpose))
     .map(row => [row.block, row.bucket, displayDate(row.date), row.purpose === 'EMASC' ? 'Emasculação' : 'Polinização',
       row.quantity, row.observation, row.priority ? 'SIM' : 'NÃO', row.user_name, row.created_at, row.device_id].map(quote).join(';'))].join('\r\n') + '\r\n';
@@ -68,6 +71,6 @@ export function exportFilename(profile: Profile): string {
   return `REGISTRO_BC_${profile.deviceId}.csv`;
 }
 export function snapshotForDevice(profile: Profile, records: Evaluation[]): { filename: string; records: Evaluation[]; csv: string } {
-  const selected = records.filter(r => r.device_id === profile.deviceId);
+  const selected = exportableRecords(records.filter(r => r.device_id === profile.deviceId));
   return { filename: exportFilename(profile), records: selected, csv: toCsv(selected) };
 }

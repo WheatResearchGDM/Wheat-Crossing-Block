@@ -1,6 +1,6 @@
 {
   "name": "wheat-crossing-block",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

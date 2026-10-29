@@ -22,7 +22,7 @@ export async function chooseOutput(profile: Profile, kind: 'folder' | 'create' |
 }
 function localSnapshot(profile: Profile, records: Evaluation[]): { file: File; csv: string; filename: string } {
   const snapshot = snapshotForDevice(profile, records);
-  if (!snapshot.records.length) throw new Error('Este aparelho ainda não tem coletas para exportar.');
+  if (!snapshot.records.length) throw new Error('Não há registros com pelo menos uma espiga para exportar.');
   // A complete internal snapshot exists before an external provider is contacted.
   const directory = new Directory(Paths.document, 'exportacoes');
   directory.create({ idempotent: true, intermediates: true });

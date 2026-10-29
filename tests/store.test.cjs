@@ -580,3 +580,43 @@ test('cadastro e vínculo ao arquivo original são substituídos na mesma transa
   assert.deepEqual(await store.all(),records);
   await store.resetBlock();assert.equal(await store.setting('catalogInput',null),null);db.raw.close();
 });
+
+
+test('CSV e resumo excluem zero espigas, preservam histórico e encerram a rodada após confirmação', async () => {
+  const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
+  const { db, store } = await make(); await store.setProfile(profile);
+  await store.save(profile, '1', [draft({ quantity: '0', observation: 'Sem espigas' }), draft({ purpose: 'POLI', quantity: '1' })], ['1']);
+  const before = await store.all();
+  const snapshot = snapshotForDevice(profile, before);
+  assert.equal(snapshot.records.length, 1);
+  assert.equal(snapshot.records[0].purpose, 'POLI');
+  assert.equal(snapshot.csv, toCsv(before));
+  assert.ok(!snapshot.csv.includes('Sem espigas'));
+  assert.ok(snapshot.csv.includes('"Polinização";"1"'));
+  assert.equal(snapshot.csv.split('\r\n').length, 3);
+  const written = [];
+  assert.deepEqual(await exportDevice(store, profile, async rows => written.push(...rows)), { total: 1, newRecords: 1 });
+  assert.deepEqual(written, snapshot.records);
+  assert.deepEqual(await store.all(), before);
+  assert.equal((await store.exportState(before)).pending, 0);
+  assert.deepEqual(await exportDevice(store, profile, async () => {}), { total: 1, newRecords: 0 });
+  db.raw.close();
+});
+
+test('somente zeros não gravam nem encerram coleta; alterações durante exportação preservam a rodada', async () => {
+  const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
+  const { db, store } = await make(); await store.setProfile(profile);
+  const sheet = await store.loadSheet(profile, '1');
+  sheet[0].date = '2026-10-24';
+  await store.saveSheet(profile, '1', sheet, ['1']);
+  let writes = 0;
+  await assert.rejects(exportDevice(store, profile, async () => { writes++; }), /pelo menos uma espiga/);
+  assert.equal(writes, 0);
+  assert.deepEqual(await store.loadSheet(profile, '1'), sheet);
+  await store.save(profile, '2', [draft({ quantity: '2' })], ['2']);
+  await assert.rejects(exportDevice(store, profile, async () => {
+    await store.save(profile, '1', [draft({ quantity: '1' })], ['1']);
+  }), /alterações posteriores/);
+  assert.deepEqual(await store.loadSheet(profile, '1'), sheet);
+  db.raw.close();
+});
