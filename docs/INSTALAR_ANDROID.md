@@ -1,6 +1,6 @@
 # Instalar a versão de teste no Android
 
-## Versão 0.9.1 pelo GitHub
+## Versão 0.10.0 pelo GitHub
 
 Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK Android**. Baixe **CrossingBlock-Android-celular-tablet**, extraia o ZIP e abra `CrossingBlock.apk`. O nome no celular é **Crossing Block**, agora com uma espiga dourada no ícone. Instale como atualização da variante GitHub que já está no aparelho; não desinstale nem limpe os dados.
 
@@ -10,11 +10,11 @@ Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK A
 4. Escolha duas datas para cada finalidade; os campos vazios dos próximos baldes recebem as últimas datas escolhidas. As avaliações existentes são preservadas. Ajuste as quantidades com número com as setas à direita. Tocar no número permite digitá-lo; a observação oferece opções e texto livre.
 5. As alterações ficam gravadas no aparelho automaticamente; confira o indicador no rodapé. Datas são sugeridas para os próximos baldes e as quantidades começam em zero.
 6. Em Configurações → **Escolher destino** / **Alterar destino**, escolha uma pasta, crie o arquivo ou selecione o CSV existente. O destino é compartilhado pelos usuários do aparelho.
-7. Somente linhas com pelo menos uma espiga entram no CSV; linhas com zero, mesmo com data ou observação, ficam apenas no histórico interno. Se todas as linhas tiverem zero, o app avisa e preserva a coleta. Exporte para atualizar `REGISTRO_BC_[ID_DO_APARELHO].csv`, com todos os usuários e `Prioridade` (`SIM`/`NÃO`). O pop-up informa o total de registros, os novos desde a última exportação confirmada e pede conferir a sincronização no OneDrive. A gravação confirmada limpa a coleta e volta ao primeiro balde, preservando histórico, prioridades, cadastro e destino.
+7. Em Configurações, informe e salve o apelido do dispositivo. Escolha Excel (.xlsx) ou CSV (.csv). A coluna `Dispositivo` mostra o apelido; o ID interno é preservado. A saída aceita qualquer nome com extensão `.xlsx` ou `.csv`. Arquivos existentes mantêm o próprio nome e determinam o formato. Somente linhas com pelo menos uma espiga OU observação preenchida entram no arquivo. Data com zero espigas e observação vazia não é exportada. O pop-up informa o total de registros e novos registros e pede conferir a sincronização no OneDrive. A confirmação de escrita limpa a coleta e volta ao primeiro balde, preservando o histórico. O arquivo externo recebe o histórico do banco deste aparelho; dados adicionados por fora não são incorporados automaticamente.
 8. Trocar de usuário preserva a coleta em andamento de cada usuário. Somente a exportação confirmada limpa os campos. A lixeira no pop-up exclui o nome da lista, com confirmação, preservando as avaliações. Excluir o usuário ativo exige nova identificação.
-9. Se o OneDrive não aparecer no seletor, use **Enviar cópia dos dados** e confirme o envio no próprio OneDrive, se disponível. Esse recurso também gera novamente o CSV acumulado com os dados internos. Compartilhar não confirma recebimento e não limpa a tela. É possível exportar para uma pasta local antes de enviar a cópia.
+9. Se o OneDrive não aparecer no seletor, use **Enviar cópia dos dados** e confirme o envio no próprio OneDrive, se disponível. Esse recurso também gera novamente o arquivo acumulado com os dados internos. Compartilhar não confirma recebimento e não limpa a tela. É possível exportar para uma pasta local antes de enviar a cópia.
 
-10. Para iniciar outro BC do zero, use Configurações → **Iniciar novo bloco de cruzamento** e leia o aviso antes de confirmar **Limpar e iniciar**. A limpeza apaga o histórico e as cópias internas de todos os usuários, mas preserva arquivos originais e CSVs externos. Importe o novo cadastro e escolha outro destino.
+10. Para iniciar outro BC do zero, use Configurações → **Iniciar novo bloco de cruzamento** e leia o aviso antes de confirmar **Limpar e iniciar**. A limpeza apaga o histórico e as cópias internas de todos os usuários, mas preserva arquivos originais e arquivos externos. Importe o novo cadastro e escolha outro destino.
 
 A atualização preserva o banco quando Android reconhece o mesmo pacote e assinatura. Se o Android informar incompatibilidade de assinatura, mantenha o app antigo instalado e exporte/confira seus dados antes de qualquer reinstalação. O teste de escrita e sincronização com o OneDrive da organização deve ser feito no aparelho.
 

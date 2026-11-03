@@ -6,8 +6,8 @@ export type Evaluation = {
   user_id: string; user_name: string; device_id: string; created_at: string; updated_at: string; round_id?: string; priority?: boolean;
 };
 export type Draft = { rowId: string; date: string; quantity: string; observation: string; purpose: Purpose; roundId?: string };
-export type OutputTarget = { kind: 'folder' | 'file'; uri: string; name: string; filename?: string };
-export const OUTPUT_HEADERS = ['Nome do Bloco', 'Balde', 'Data', 'Propósito', 'Disponibilidade', 'Observação', 'Prioridade', 'Nome do usuário', 'Data de criação', 'Device ID'] as const;
+export type OutputTarget = { kind: 'folder' | 'file'; uri: string; name: string; filename?: string; format?: 'xlsx' | 'csv' };
+export const OUTPUT_HEADERS = ['Nome do Bloco', 'Balde', 'Data', 'Propósito', 'Disponibilidade', 'Observação', 'Prioridade', 'Nome do usuário', 'Data de criação', 'Dispositivo'] as const;
 export const HEADERS = ['schema_version', 'record_id', 'version', 'cycle', 'block', 'bucket', 'date',
   'purpose', 'quantity', 'observation', 'user_id', 'user_name', 'device_id', 'created_at', 'updated_at'] as const;
 export const MAX_QUANTITY = 100000;
@@ -52,9 +52,9 @@ export function validateDrafts(profile: Profile, bucket: string, drafts: Draft[]
 }
 
 export function exportableRecords(records: Evaluation[]): Evaluation[] {
-  return records.filter(row => row.quantity >= 1);
+  return records.filter(row => row.quantity >= 1 || row.observation.trim().length > 0);
 }
-export function toCsv(records: Evaluation[]): string {
+export function toCsv(records: Evaluation[], deviceName = 'Dispositivo'): string {
   // Quoting alone does not stop spreadsheet formula execution in user-entered text.
   const quote = (value: unknown) => {
     let text = String(value);
@@ -64,7 +64,7 @@ export function toCsv(records: Evaluation[]): string {
   return '\ufeff' + [OUTPUT_HEADERS.join(';'), ...exportableRecords(records).sort((a, b) =>
     a.block.localeCompare(b.block) || Number(a.bucket) - Number(b.bucket) || a.date.localeCompare(b.date) || a.purpose.localeCompare(b.purpose))
     .map(row => [row.block, row.bucket, displayDate(row.date), row.purpose === 'EMASC' ? 'Emasculação' : 'Polinização',
-      row.quantity, row.observation, row.priority ? 'SIM' : 'NÃO', row.user_name, row.created_at, row.device_id].map(quote).join(';'))].join('\r\n') + '\r\n';
+      row.quantity, row.observation, row.priority ? 'SIM' : 'NÃO', row.user_name, row.created_at, deviceName].map(quote).join(';'))].join('\r\n') + '\r\n';
 }
 export function exportFilename(profile: Profile): string {
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(profile.deviceId)) throw new Error('Identificador do aparelho inválido.');

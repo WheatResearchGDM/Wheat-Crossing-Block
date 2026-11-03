@@ -1,44 +1,47 @@
 import { requireOptionalNativeModule } from 'expo';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { exportFilename, snapshotForDevice } from '../core/model';
+import { buildOutput, fileFormat, outputFilename, suggestedFilename } from '../core/output';
+import type { OutputPreferences } from '../core/output';
 import type { Evaluation, OutputTarget, Profile } from '../core/model';
 
 type Documents = {
   chooseAsync(kind: 'folder' | 'create' | 'open', filename: string): Promise<OutputTarget | null>;
-  writeCsvAsync(kind: string, uri: string, filename: string, content: string): Promise<{ uri: string; name: string }>;
+  writeFileAsync(kind: string, uri: string, filename: string, base64: string, mime: string): Promise<{ uri: string; name: string }>;
 };
 function documents(): Documents {
   const module = requireOptionalNativeModule<Documents>('BCDocuments');
-  if (!module) throw new Error('Instale o novo APK Android para escolher um destino permanente.');
+  if (!module?.writeFileAsync) throw new Error('Instale o APK atualizado para exportar Excel ou CSV.');
   return module;
 }
-export async function chooseOutput(profile: Profile, kind: 'folder' | 'create' | 'open'): Promise<OutputTarget | null> {
-  const filename = exportFilename(profile);
-  const target = await documents().chooseAsync(kind, filename);
-  if (target?.kind === 'file' && target.name !== filename)
-    throw new Error(`O arquivo deste aparelho deve se chamar ${filename}. Para atualizar um CSV que já existe, use “Escolher CSV existente”.`);
-  return target ? { ...target, filename: target.kind === 'file' ? filename : undefined } : null;
+export async function chooseOutput(preferences: OutputPreferences, kind: 'folder' | 'create' | 'open'): Promise<OutputTarget | null> {
+  const target = await documents().chooseAsync(kind, suggestedFilename(preferences));
+  if (!target) return null;
+  // Existing documents retain their own names and determine the format from their extension.
+  const format = target.kind === 'file' ? fileFormat(target.name) : preferences.format;
+  return { ...target, filename: target.kind === 'file' ? target.name : undefined, format };
 }
-function localSnapshot(profile: Profile, records: Evaluation[]): { file: File; csv: string; filename: string } {
-  const snapshot = snapshotForDevice(profile, records);
-  if (!snapshot.records.length) throw new Error('Não há registros com pelo menos uma espiga para exportar.');
-  // A complete internal snapshot exists before an external provider is contacted.
+async function localSnapshot(profile: Profile, records: Evaluation[], preferences: OutputPreferences, target?: OutputTarget) {
+  const snapshot = buildOutput(profile, records, preferences, target);
   const directory = new Directory(Paths.document, 'exportacoes');
   directory.create({ idempotent: true, intermediates: true });
-  const file = new File(directory, snapshot.filename);
-  file.write(snapshot.csv);
-  return { file, csv: snapshot.csv, filename: snapshot.filename };
+  // A fixed private filename avoids relying on provider-specific display-name/path rules.
+  const file = new File(directory, target ? `saida.${preferences.format}` : suggestedFilename(preferences));
+  await file.write(snapshot.content, { encoding: snapshot.encoding });
+  return { ...snapshot, file };
 }
-export async function exportCsv(profile: Profile, records: Evaluation[], target: OutputTarget): Promise<void> {
-  const { csv, filename } = localSnapshot(profile, records);
-  await documents().writeCsvAsync(target.kind, target.uri, filename, csv);
+export async function exportOutput(profile: Profile, records: Evaluation[], target: OutputTarget, preferences: OutputPreferences): Promise<string> {
+  outputFilename(preferences, target);
+  const { file, filename, mime } = await localSnapshot(profile, records, preferences, target);
+  const written = await documents().writeFileAsync(target.kind, target.uri, filename, await file.base64(), mime);
+  return written.name;
 }
-export async function shareCsv(profile: Profile, records: Evaluation[]): Promise<void> {
+export async function shareOutput(profile: Profile, records: Evaluation[], preferences: OutputPreferences): Promise<void> {
   if (!await Sharing.isAvailableAsync()) throw new Error('Compartilhamento indisponível neste aparelho.');
-  const { file } = localSnapshot(profile, records);
-  await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle: 'Enviar CSV do aparelho', UTI: 'public.comma-separated-values-text' });
-  // Android does not confirm receipt/upload. Never mark exported or reset forms here.
+  const { file, mime } = await localSnapshot(profile, records, preferences);
+  await Sharing.shareAsync(file.uri, { mimeType: mime, dialogTitle: 'Enviar dados do aparelho',
+    UTI: preferences.format === 'xlsx' ? 'org.openxmlformats.spreadsheetml.sheet' : 'public.comma-separated-values-text' });
+  // Sharing does not confirm delivery. Never reset the collection here.
 }
 
 export async function clearInternalCollectionFiles(): Promise<void> {

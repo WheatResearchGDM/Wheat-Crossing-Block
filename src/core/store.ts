@@ -53,6 +53,12 @@ export class Store {
   async setSetting(key: string, value: unknown): Promise<void> {
     await this.db.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', key, JSON.stringify(value));
   }
+  async setOutputPreferences(preferences: import('./output').OutputPreferences, target: import('./model').OutputTarget | null): Promise<void> {
+    await this.db.withExclusiveTransactionAsync(async tx => {
+      for (const [key, value] of [['outputPreferences', preferences], ['outputDevice', target], ['outputFolder', null]] as const)
+        await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', key, JSON.stringify(value));
+    });
+  }
   private priorityKey(profile: Pick<Profile, 'cycle' | 'block'>, bucket: string): string {
     return 'priority:' + JSON.stringify([profile.cycle, profile.block, bucket]);
   }
@@ -148,10 +154,12 @@ export class Store {
   async resetBlock(): Promise<Profile> {
     const profile = { ...await this.getProfile(), cycle: '', block: '' };
     const users = await this.users();
+    const preferences = await this.setting('outputPreferences', null);
     await this.db.withExclusiveTransactionAsync(async tx => {
       await tx.runAsync('DELETE FROM revisions');
       await tx.runAsync('DELETE FROM evaluations');
       await tx.runAsync('DELETE FROM settings');
+      if (preferences) await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'outputPreferences', JSON.stringify(preferences));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'profile', JSON.stringify(profile));
       await tx.runAsync('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', 'users', JSON.stringify(users));
       // New round IDs reject delayed drafts from the block that was explicitly cleared.

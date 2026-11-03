@@ -31,6 +31,7 @@ test('limpeza remove apenas CSV interno e cache; preserva banco e arquivos exter
       if (name === 'expo-file-system') return { Directory, Paths: { document, cache } };
       if (name === 'expo') return { requireOptionalNativeModule: () => null };
       if (name === 'expo-sharing') return {};
+      if (name === '../core/output') return require(join(process.env.BC_TEST_BUILD, 'output.js'));
       if (name === '../core/model') return require(join(process.env.BC_TEST_BUILD, 'model.js'));
       throw new Error('Importação inesperada: ' + name);
     } });

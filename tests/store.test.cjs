@@ -68,9 +68,9 @@ test('exportação acumulada preserva unicode, delimitadores, aspas e novas linh
   const { db, store } = await make();
   await store.save(profile, '1', [draft({ observation: 'Observação; "revisar"\namanhã' })], ['1']);
   const csv = toCsv(await store.all());
-  assert.ok(csv.startsWith('\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Prioridade;Nome do usuário;Data de criação;Device ID'));
+  assert.ok(csv.startsWith('\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Prioridade;Nome do usuário;Data de criação;Dispositivo'));
   assert.ok(csv.includes('"Observação; ""revisar""\namanhã"')); assert.ok(csv.includes('"24/10/2026";"Emasculação";"12"'));
-  assert.ok(csv.includes('Prioridade;Nome do usuário;Data de criação;Device ID'));
+  assert.ok(csv.includes('Prioridade;Nome do usuário;Data de criação;Dispositivo'));
   assert.equal(exportFilename(profile), 'REGISTRO_BC_aparelho-1.csv');
   assert.equal(exportFilename({ ...profile, userName: 'Outro usuário' }), exportFilename(profile));
   assert.notEqual(exportFilename({ ...profile, deviceId: 'aparelho-2' }), exportFilename(profile)); db.raw.close();
@@ -292,11 +292,11 @@ test('CSV acrescenta somente Prioridade e usa a última escolha para todas as li
   assert.deepEqual(prioritized.map(r => r.record_id), before.map(r => r.record_id));
   assert.deepEqual(prioritized.map(r => r.created_at), before.map(r => r.created_at));
   const csv = toCsv(prioritized).split('\r\n');
-  assert.equal(csv[0], '\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Prioridade;Nome do usuário;Data de criação;Device ID');
+  assert.equal(csv[0], '\ufeffNome do Bloco;Balde;Data;Propósito;Disponibilidade;Observação;Prioridade;Nome do usuário;Data de criação;Dispositivo');
   assert.ok(csv.slice(1, -1).every(row => row.split(';')[6] === '"SIM"' && row.split(';').length === 10));
   assert.equal(csv[1].split(';')[7], '"Coletor de teste"');
   assert.equal(csv[1].split(';')[8], `"${prioritized[0].created_at}"`);
-  assert.equal(csv[1].split(';')[9], '"aparelho-1"');
+  assert.equal(csv[1].split(';')[9], '"Dispositivo"');
   await assert.rejects(store.completeExport(before), /alterações posteriores/);
   await store.setPriority(profile, '1', true);
   assert.ok((await store.all()).every(r => r.version === 2));
@@ -582,10 +582,10 @@ test('cadastro e vínculo ao arquivo original são substituídos na mesma transa
 });
 
 
-test('CSV e resumo excluem zero espigas, preservam histórico e encerram a rodada após confirmação', async () => {
+test('CSV e resumo excluem zero espigas sem observação, preservam histórico e encerram a rodada após confirmação', async () => {
   const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
   const { db, store } = await make(); await store.setProfile(profile);
-  await store.save(profile, '1', [draft({ quantity: '0', observation: 'Sem espigas' }), draft({ purpose: 'POLI', quantity: '1' })], ['1']);
+  await store.save(profile, '1', [draft({ quantity: '0', observation: '' }), draft({ purpose: 'POLI', quantity: '1' })], ['1']);
   const before = await store.all();
   const snapshot = snapshotForDevice(profile, before);
   assert.equal(snapshot.records.length, 1);
@@ -603,14 +603,14 @@ test('CSV e resumo excluem zero espigas, preservam histórico e encerram a rodad
   db.raw.close();
 });
 
-test('somente zeros não gravam nem encerram coleta; alterações durante exportação preservam a rodada', async () => {
+test('somente zeros sem observação não gravam nem encerram coleta; alterações durante exportação preservam a rodada', async () => {
   const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
   const { db, store } = await make(); await store.setProfile(profile);
   const sheet = await store.loadSheet(profile, '1');
   sheet[0].date = '2026-10-24';
   await store.saveSheet(profile, '1', sheet, ['1']);
   let writes = 0;
-  await assert.rejects(exportDevice(store, profile, async () => { writes++; }), /pelo menos uma espiga/);
+  await assert.rejects(exportDevice(store, profile, async () => { writes++; }), /espigas ou observação/);
   assert.equal(writes, 0);
   assert.deepEqual(await store.loadSheet(profile, '1'), sheet);
   await store.save(profile, '2', [draft({ quantity: '2' })], ['2']);
@@ -618,5 +618,27 @@ test('somente zeros não gravam nem encerram coleta; alterações durante export
     await store.save(profile, '1', [draft({ quantity: '1' })], ['1']);
   }), /alterações posteriores/);
   assert.deepEqual(await store.loadSheet(profile, '1'), sheet);
+  db.raw.close();
+});
+
+
+test('apelido e formato são globais, persistem e sobrevivem ao novo bloco sem alterar ID ou histórico', async () => {
+  const { db, store } = await make(); await store.setProfile(profile);
+  await store.save(profile, '1', [draft({ quantity: '0', observation: 'Apenas observação' })], ['1']);
+  const before = await store.all();
+  const preferences = { nickname: 'Tablet Fernanda', format: 'xlsx' };
+  await store.setOutputPreferences(preferences, { kind:'file',uri:'content://1',name:'Arquivo livre.xlsx',format:'xlsx' });
+  const other = await store.selectUser('Maria');
+  assert.equal(other.deviceId, profile.deviceId);
+  assert.deepEqual(await store.setting('outputPreferences',null),preferences);
+  assert.deepEqual(await store.all(),before);
+  const { exportDevice } = require(join(process.env.BC_TEST_BUILD, 'export-flow.js'));
+  let rows = [];
+  assert.deepEqual(await exportDevice(store, other, async records => { rows=records; }), { total:1,newRecords:1 });
+  assert.equal(rows[0].quantity,0);assert.equal(rows[0].observation,'Apenas observação');
+  await store.resetBlock();
+  assert.equal((await store.getProfile()).deviceId,profile.deviceId);
+  assert.deepEqual(await store.setting('outputPreferences',null),preferences);
+  assert.equal(await store.setting('outputDevice',null),null);
   db.raw.close();
 });

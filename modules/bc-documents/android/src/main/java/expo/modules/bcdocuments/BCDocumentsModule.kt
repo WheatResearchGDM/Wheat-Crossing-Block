@@ -38,7 +38,7 @@ class BCDocumentsModule : Module() {
         if (kind != "catalog") addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         if (kind != "folder") {
           addCategory(Intent.CATEGORY_OPENABLE)
-          type = if (kind == "open" || kind == "catalog") "*/*" else "text/csv"
+          type = if (kind == "open" || kind == "catalog") "*/*" else if (filename.endsWith(".xlsx", ignoreCase = true)) "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" else "text/csv"
           putExtra(Intent.EXTRA_TITLE, filename)
         }
       }
@@ -91,22 +91,25 @@ class BCDocumentsModule : Module() {
       mapOf("name" to (file.name ?: "cadastro.xlsx"), "base64" to Base64.encodeToString(bytes, Base64.NO_WRAP))
     }
 
-    AsyncFunction("writeCsvAsync") { kind: String, location: String, filename: String, content: String ->
+    AsyncFunction("writeFileAsync") { kind: String, location: String, filename: String, base64: String, mime: String ->
+      require(kind in listOf("folder", "file"))
+      val extension = if (mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") ".xlsx" else if (mime == "text/csv") ".csv" else throw IOException("Formato de saída inválido.")
+      if (filename.contains('/') || filename.contains('\\') || !filename.endsWith(extension, ignoreCase = true)) throw IOException("Nome de arquivo incompatível com o formato escolhido.")
       val uri = Uri.parse(location)
       val file = if (kind == "folder") {
         val folder = DocumentFile.fromTreeUri(context, uri) ?: throw IOException("Selecione a pasta novamente.")
         if (!folder.isDirectory || !folder.canWrite()) throw IOException("Pasta indisponível. Confira a conexão ou selecione o destino novamente.")
-        folder.findFile(filename) ?: folder.createFile("text/csv", filename) ?: throw IOException("Não foi possível criar o CSV.")
+        folder.findFile(filename) ?: folder.createFile(mime, filename) ?: throw IOException("Não foi possível criar o arquivo.")
       } else {
-        DocumentFile.fromSingleUri(context, uri) ?: throw IOException("Selecione o CSV novamente.")
+        DocumentFile.fromSingleUri(context, uri) ?: throw IOException("Selecione o arquivo novamente.")
       }
-      if (file.name != filename) throw IOException("Escolha o arquivo $filename para este aparelho.")
-      val bytes = content.toByteArray(Charsets.UTF_8)
-      (context.contentResolver.openOutputStream(file.uri, "wt") ?: throw IOException("Não foi possível abrir o CSV para escrita.")).use { it.write(bytes); it.flush() }
+      if (file.name?.endsWith(extension, ignoreCase = true) != true) throw IOException("Escolha um arquivo $extension.")
+      val bytes = Base64.decode(base64, Base64.DEFAULT)
+      (context.contentResolver.openOutputStream(file.uri, "wt") ?: throw IOException("Não foi possível abrir o arquivo para escrita.")).use { it.write(bytes); it.flush() }
       // Provider success does not mean OneDrive has finished cloud synchronization.
       val readback = context.contentResolver.openInputStream(file.uri)?.use { it.readBytes() }
       if (readback == null || !readback.contentEquals(bytes)) throw IOException("O destino não confirmou o conteúdo completo. Os dados continuam no aparelho; tente exportar novamente.")
-      mapOf("uri" to file.uri.toString(), "name" to filename)
+      mapOf("uri" to file.uri.toString(), "name" to (file.name ?: filename))
     }
   }
 }

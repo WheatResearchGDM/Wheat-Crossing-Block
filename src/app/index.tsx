@@ -4,16 +4,18 @@ import { ActivityIndicator, Alert, AppState, BackHandler, Keyboard, KeyboardAvoi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { displayDate, exportFilename, MAX_QUANTITY, today } from '../core/model';
+import { displayDate, MAX_QUANTITY, today } from '../core/model';
 import type { Draft, OutputTarget, Profile } from '../core/model';
 import type { CatalogEntry, CatalogSource } from '../core/catalog';
 import type { Store } from '../core/store';
 import { changeSheetDate, SaveQueue, sheetDates, VISIBLE_ROWS } from '../core/collection';
 import { collectionLayout } from '../core/screen-layout';
 import { exportDevice } from '../core/export-flow';
+import { outputFilename, outputPreferences, suggestedFilename, validateNickname } from '../core/output';
+import type { OutputFormat, OutputPreferences } from '../core/output';
 import { startNewBlock } from '../core/block-reset';
 import { openStore } from '../services/storage';
-import { chooseOutput, clearInternalCollectionFiles, exportCsv, shareCsv } from '../services/export';
+import { chooseOutput, clearInternalCollectionFiles, exportOutput, shareOutput } from '../services/export';
 import { reloadCatalog, selectCatalog } from '../services/catalog-import';
 
 const colors = { ink: '#123047', muted: '#597080', line: '#D6E0E5', field: '#F4F7F8', paper: '#FFFFFF', green: '#35624C', red: '#AA3030' };
@@ -58,6 +60,8 @@ export default function CollectionScreen() {
   const [catalogNotice, setCatalogNotice] = useState('');
   const [exportSummary, setExportSummary] = useState<{ total: number; newRecords: number; filename: string } | null>(null);
   const [target, setTarget] = useState<OutputTarget | null>(null);
+  const [preferences, setPreferences] = useState<OutputPreferences>({ nickname: '', format: 'xlsx' });
+  const [nicknameEdit, setNicknameEdit] = useState('');
   const [pending, setPending] = useState(0);
   const [saveError, setSaveError] = useState('');
   const [validation, setValidation] = useState('');
@@ -80,8 +84,11 @@ export default function CollectionScreen() {
     await store.current!.setSetting('activeBucket', bucket);
     validationRef.current = null; setValidation('');
     show({ profile: nextProfile, catalog, bucket, drafts, priority });
-    setTarget(await store.current!.setting<OutputTarget | null>('outputDevice', null)
-      ?? await store.current!.setting<OutputTarget | null>('outputFolder', null));
+    const output = await store.current!.setting<OutputTarget | null>('outputDevice', null)
+      ?? await store.current!.setting<OutputTarget | null>('outputFolder', null);
+    setTarget(output);
+    const prefs = outputPreferences(await store.current!.setting<OutputPreferences | null>('outputPreferences', null), output);
+    setPreferences(prefs); setNicknameEdit(prefs.nickname);
   }, [show]);
 
   useEffect(() => {
@@ -176,7 +183,7 @@ export default function CollectionScreen() {
     }, false);
   }
   function deleteUser(user: User) {
-    Alert.alert('Excluir usuário?', `${user.userName} será removido da lista. As coletas anteriores continuarão no aparelho e no CSV.`, [
+    Alert.alert('Excluir usuário?', `${user.userName} será removido da lista. As coletas anteriores continuarão no aparelho e nos arquivos exportados.`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Excluir', style: 'destructive', onPress: () => void run(async () => {
         const current = contextRef.current!;
@@ -214,13 +221,31 @@ export default function CollectionScreen() {
       setPanel(profile.userName ? 'settings' : 'user');
     }, false);
   }
+  async function saveNickname() {
+    await run(async () => {
+      const nickname = validateNickname(nicknameEdit);
+      const next = { ...preferences, nickname };
+      await store.current!.setSetting('outputPreferences', next);
+      setPreferences(next); setNicknameEdit(nickname); setNotice('Nome do dispositivo salvo');
+    });
+  }
+  async function selectFormat(format: OutputFormat) {
+    await run(async () => {
+      const next = { ...preferences, format };
+      // A file cannot change format in place. Keep folder destinations, forget incompatible files.
+      const selected = target?.kind === 'file' && target.format !== format && !target.name.toLowerCase().endsWith('.' + format) ? null : target;
+      await store.current!.setOutputPreferences(next, selected);
+      setPreferences(next); setTarget(selected);
+    });
+  }
   async function selectOutput(kind: 'folder' | 'create' | 'open') {
     await run(async () => {
       const profile = contextRef.current!.profile;
       if (!profile.userName) throw new Error('Escolha o usuário no ícone superior esquerdo.');
-      const selected = await chooseOutput(profile, kind); if (!selected) return;
-      await store.current!.setSetting('outputDevice', selected);
-      if (selected.kind === 'folder') await store.current!.setSetting('outputFolder', selected);
+      const selected = await chooseOutput(preferences, kind); if (!selected) return;
+      const next = { ...preferences, format: selected.format ?? preferences.format };
+      await store.current!.setOutputPreferences(next, selected);
+      setPreferences(next);
       setTarget(selected);
       setPanel('settings');
     });
@@ -229,18 +254,23 @@ export default function CollectionScreen() {
     await run(async () => {
       const current = contextRef.current!;
       if (!current.profile.userName) { openPanel('user'); return; }
-      if (!target) { setPanel('settings'); Alert.alert('Destino do CSV', 'Escolha a pasta ou o arquivo de saída. Depois toque no ícone de exportação.'); return; }
-      const summary = await exportDevice(store.current!, current.profile, records => exportCsv(current.profile, records, target));
+      if (!preferences.nickname.trim()) { setPanel('settings'); throw new Error('Informe e salve o nome do dispositivo nas configurações.'); }
+      if (!target) { setPanel('settings'); Alert.alert('Destino do arquivo', 'Escolha a pasta ou o arquivo de saída. Depois toque no ícone de exportação.'); return; }
+      let filename = outputFilename(preferences, target);
+      const summary = await exportDevice(store.current!, current.profile, async records => {
+        filename = await exportOutput(current.profile, records, target, preferences);
+      });
       await reload(current.profile, current.catalog);
-      setExportSummary({ ...summary, filename: exportFilename(current.profile) });
+      setExportSummary({ ...summary, filename });
       setPanel('export-result');
-      setNotice('CSV atualizado · nova coleta');
+      setNotice('Arquivo atualizado · nova coleta');
     });
   }
   async function sendCopy() {
     await run(async () => {
       const current = contextRef.current!;
-      await shareCsv(current.profile, await store.current!.all());
+      if (!preferences.nickname.trim()) { setPanel('settings'); throw new Error('Informe e salve o nome do dispositivo nas configurações.'); }
+      await shareOutput(current.profile, await store.current!.all(), preferences);
       setNotice('Confira o envio no aplicativo escolhido');
     });
   }
@@ -269,7 +299,7 @@ export default function CollectionScreen() {
   const blocks = [...new Map(catalog.map(e => [JSON.stringify([e.cycle, e.block]), e])).values()];
   const layout = collectionLayout(screenSize.width, screenSize.height);
   const issue = saveError || validation;
-  const title = panel === 'user' ? 'Usuário' : panel === 'settings' ? 'Configurações' : panel === 'new-block' ? 'Iniciar novo bloco?' : panel === 'export-result' ? 'Exportação concluída' : panel === 'output' ? 'Destino do CSV' : panel === 'block' ? 'Bloco de cruzamento' : panel === 'bucket' ? 'Escolher balde' : panel === 'quantity' ? 'Espigas' : 'Observação';
+  const title = panel === 'user' ? 'Usuário' : panel === 'settings' ? 'Configurações' : panel === 'new-block' ? 'Iniciar novo bloco?' : panel === 'export-result' ? 'Exportação concluída' : panel === 'output' ? 'Destino do arquivo' : panel === 'block' ? 'Bloco de cruzamento' : panel === 'bucket' ? 'Escolher balde' : panel === 'quantity' ? 'Espigas' : 'Observação';
   const available = buckets.filter(b => !edit || b.includes(edit.trim())).slice(0, 120);
 
   return <SafeAreaView style={styles.root}>
@@ -366,8 +396,8 @@ export default function CollectionScreen() {
               </>}
               {panel === 'new-block' && <>
                 <Text style={styles.hint}>Esta ação apaga os dados salvos deste aplicativo no aparelho:</Text>
-                <Text style={styles.hint}>{'• Todas as coletas e o histórico de avaliações, de todos os usuários.\n• Prioridades e cadastro de baldes.\n• Datas, espigas, observações, cópias internas do CSV e arquivos temporários.\n• Locais de entrada e saída que estavam salvos.'}</Text>
-                <Text style={styles.hint}>O arquivo original de baldes e os CSVs já exportados não serão excluídos.</Text>
+                <Text style={styles.hint}>{'• Todas as coletas e o histórico de avaliações, de todos os usuários.\n• Prioridades e cadastro de baldes.\n• Datas, espigas, observações, cópias internas dos arquivos e arquivos temporários.\n• Locais de entrada e saída que estavam salvos.'}</Text>
+                <Text style={styles.hint}>O arquivo original de baldes e os arquivos já exportados não serão excluídos.</Text>
                 <Text style={styles.resetWarning}>A limpeza não pode ser desfeita. Exporte seus dados e confira a sincronização no OneDrive antes de continuar.</Text>
                 <View style={styles.dialogActions}>
                   <View style={styles.dialogAction}><Action disabled={busy} text="Cancelar" onPress={() => setPanel('settings')} /></View>
@@ -378,7 +408,7 @@ export default function CollectionScreen() {
                 </View>
               </>}
               {panel === 'export-result' && exportSummary && <>
-                <Text style={styles.hint}>O CSV foi atualizado.</Text>
+                <Text style={styles.hint}>O arquivo foi atualizado.</Text>
                 <Text style={styles.filename}>{exportSummary.filename}</Text>
                 <View style={styles.exportTotal}><Text style={styles.exportLabel}>Total de registros no arquivo</Text><Text style={styles.exportCount}>{exportSummary.total.toLocaleString('pt-BR')}</Text></View>
                 <View style={styles.exportTotal}><Text style={styles.exportLabel}>Novos desde a última exportação</Text><Text style={styles.exportCount}>{exportSummary.newRecords.toLocaleString('pt-BR')}</Text></View>
@@ -386,6 +416,12 @@ export default function CollectionScreen() {
                 <Action disabled={busy} text="OK" onPress={() => setPanel(null)} />
               </>}
               {panel === 'settings' && <>
+                <View style={styles.settingsSection}>
+                  <Text style={styles.settingsTitle}>Dispositivo</Text>
+                  <Text style={styles.hint}>Nome / apelido do dispositivo</Text>
+                  <TextInput accessibilityLabel="Nome do dispositivo" editable={!busy} style={styles.input} value={nicknameEdit} onChangeText={setNicknameEdit} placeholder="Ex.: Tablet Fernanda" maxLength={40} autoCapitalize="words" />
+                  <Action disabled={busy || !nicknameEdit.trim()} text="Salvar nome" onPress={() => void saveNickname()} />
+                </View>
                 <View style={styles.settingsSection}>
                   <Text style={styles.settingsTitle}>Cadastro de baldes</Text>
                   <View style={styles.catalogButtons}>
@@ -397,7 +433,12 @@ export default function CollectionScreen() {
                   {!!catalogNotice && <Text accessibilityLiveRegion="polite" style={styles.hint}>{catalogNotice}</Text>}
                 </View>
                 <View style={[styles.settingsSection, styles.settingsDivider]}>
-                  <Text style={styles.settingsTitle}>Saída CSV</Text>
+                  <Text style={styles.settingsTitle}>Arquivo de saída</Text>
+                  <View style={styles.catalogButtons}>
+                    <View style={styles.catalogButton}><Action disabled={busy} text={`Excel (.xlsx)${preferences.format === 'xlsx' ? ' ✓' : ''}`} onPress={() => void selectFormat('xlsx')} /></View>
+                    <View style={styles.catalogButton}><Action disabled={busy} text={`CSV (.csv)${preferences.format === 'csv' ? ' ✓' : ''}`} onPress={() => void selectFormat('csv')} /></View>
+                  </View>
+                  <Text style={styles.filename}>{target?.kind === 'file' ? target.name : suggestedFilename(preferences)}</Text>
                   <Text style={styles.hint}>{target ? target.name : 'Destino não selecionado'}</Text>
                   <Action disabled={busy} text={target ? 'Alterar destino' : 'Escolher destino'} onPress={() => setPanel('output')} />
                 </View>
@@ -413,11 +454,11 @@ export default function CollectionScreen() {
                 </View>
               </>}
               {panel === 'output' && <>
-                <Text style={styles.hint}>O destino será lembrado neste aparelho.</Text>
-                {!!profile.userName && <Text style={styles.filename}>{exportFilename(profile)}</Text>}
+                <Text style={styles.hint}>O destino será lembrado neste aparelho. Arquivos existentes são atualizados com o histórico salvo neste app.</Text>
+                {!!profile.userName && <Text style={styles.filename}>{suggestedFilename(preferences)}</Text>}
                 <Action disabled={busy} text="Escolher pasta de saída" onPress={() => void selectOutput('folder')} />
                 <Action disabled={busy} text="Criar arquivo de saída" onPress={() => void selectOutput('create')} />
-                <Action disabled={busy} text="Escolher CSV existente" onPress={() => void selectOutput('open')} />
+                <Action disabled={busy} text="Escolher arquivo existente" onPress={() => void selectOutput('open')} />
                 <Text style={styles.hint}>OneDrive não aparece? Use Enviar cópia dos dados nas configurações.</Text>
               </>}
               {panel === 'block' && <>
