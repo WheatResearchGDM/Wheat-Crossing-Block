@@ -76,3 +76,14 @@ O artefato fica disponível por 30 dias, conforme a retenção configurada. Para
 CSV e Enviar cópia dos dados incluem somente quantidades maiores ou iguais a 1. Data ou observação com zero espigas não entram no arquivo; o histórico interno é preservado. Totais e novos registros consideram as linhas incluídas. Sem nenhuma linha com espigas, o app avisa e mantém a coleta. A confirmação continua verificando todas as revisões para preservar alterações feitas durante a exportação.
 
 TypeScript, lint e 52 testes passaram localmente e no GitHub. Conferidos digest do ZIP, CRC do APK, manifesto 0.9.1/código 10, pacote, nome, certificado igual aos anteriores, bundle e bibliotecas ARM 32/64. SHA-256 do APK: `b100e25a6006faeed1aeeac59f74a30a820ccfae8b67193cef168e2c075c1758`. Não houve teste em dispositivo físico ou com o provedor OneDrive.
+
+
+## Versão 0.10.0 — Excel, apelido e nomes de saída livres
+
+[Baixar instalador completo](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/41691396646/artifacts/13257809172). [Compilação concluída](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/41691396646), código `f5dd11c`. Extraia e instale `CrossingBlock.apk` sobre a variante GitHub anterior, sem desinstalar. A cópia local atualizada está na raiz do projeto.
+
+Configurações permite salvar o apelido do dispositivo e escolher Excel (.xlsx) ou CSV (.csv). O apelido aparece na coluna Dispositivo e no nome sugerido; o UUID permanece interno, preservando as avaliações. Nomes livres são aceitos com extensão compatível. Escolher um arquivo existente adota sua extensão/formato e mantém seu nome. Instalações novas usam Excel; destinos CSV anteriores são preservados. Um novo bloco mantém o apelido e o formato, mas esquece os destinos.
+
+A exportação e o envio de cópia incluem uma linha quando há pelo menos uma espiga OU observação preenchida. Data com zero espigas e observação vazia é omitida. Os totais consideram somente linhas incluídas. XLSX contém a aba Coletas, quantidades numéricas e textos literais. O arquivo escolhido recebe o histórico interno deste aparelho; não há mesclagem de conteúdo externo. A macro de acompanhamento não foi alterada.
+
+TypeScript, lint e 59 testes passaram localmente e no GitHub. Conferidos digest do ZIP, CRC do APK, manifesto 0.10.0/código 11, pacote, nome, mesmo certificado, novos marcadores no bundle, método nativo writeFileAsync e bibliotecas ARM 32/64. SHA-256 do APK: `068ec2001c20c25df888bf79d5d888b1e1e0c83ca5a25437c1c23dfd98ff8060`. A instalação física e a escrita pelo provedor OneDrive dependem de validação no aparelho.
