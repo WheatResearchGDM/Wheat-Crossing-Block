@@ -1,6 +1,6 @@
 # Instalar a versão de teste no Android
 
-## Versão 0.10.0 pelo GitHub
+## Versão 0.10.1 pelo GitHub
 
 Na aba **Actions**, abra a execução bem-sucedida mais recente de **Gerar APK Android**. Baixe **CrossingBlock-Android-celular-tablet**, extraia o ZIP e abra `CrossingBlock.apk`. O nome no celular é **Crossing Block**, agora com uma espiga dourada no ícone. Instale como atualização da variante GitHub que já está no aparelho; não desinstale nem limpe os dados.
 
@@ -52,3 +52,10 @@ O nome exibido passa a ser **Crossing Block**. O identificador Android, o banco,
 O número do balde é maior, sem setas ao lado; tocar no número continua abrindo a escolha de balde. A navegação fica nos botões maiores Anterior e Próximo do rodapé, sem repetir o número. As setas de espigas são maiores, permanecendo à direita da caixa numérica. Continuam duas linhas fixas por finalidade, o controle de prioridade e o cabeçalho vertical, com BC no canto superior direito. A altura dos campos se ajusta à área disponível.
 
 O cadastro continua com Escolher arquivo e Atualizar. A opção Escolher CSV existente pode permitir selecionar um arquivo no OneDrive mesmo quando Criar arquivo ou Escolher pasta só mostram locais internos. A possibilidade de atualizar esse CSV depende de o provedor conceder escrita, e o app verifica o conteúdo gravado. Downloads não sincroniza automaticamente com OneDrive.
+
+
+### Confirmação de gravação no destino
+
+A versão 0.10.1 fecha a escrita antes de conferir o arquivo e repete leituras com pausas que somam nove segundos, além do tempo de leitura, quando o provedor retorna conteúdo vazio, antigo ou temporariamente indisponível. A confirmação compara todos os bytes e rejeita arquivos incompletos ou com conteúdo antigo sobrando. Arquivos com acesso aleatório são truncados explicitamente antes da escrita. O envio é feito uma única vez por tentativa; a espera repete apenas a leitura.
+
+Se não houver confirmação, a coleta permanece no aparelho. Aguarde e tente novamente ou use Configurações → Enviar cópia dos dados. A confirmação do conteúdo no provedor não significa que o OneDrive já terminou de sincronizar com a nuvem; confira a sincronização no OneDrive.

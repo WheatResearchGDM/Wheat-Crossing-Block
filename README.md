@@ -1,9 +1,9 @@
 # Crossing Block
 Aplicativo para coleta de espigas disponíveis no BC.
 
-Versão Android 0.10.0, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
+Versão Android 0.10.1, desenvolvida em React Native + Expo SDK 58 e TypeScript. O projeto pode ser aberto diretamente nesta pasta no VS Code.
 
-[Baixar Crossing Block 0.10.0](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/41691396646/artifacts/13257809172). Extraia o ZIP e instale `CrossingBlock.apk` como atualização de **Crossing Block**. [Instruções](docs/INSTALAR_ANDROID.md).
+[Baixar Crossing Block 0.10.1](https://github.com/WheatResearchGDM/Wheat-Crossing-Block/actions/runs/42615206562/artifacts/13673325979). Extraia o ZIP e instale `CrossingBlock.apk` como atualização de **Crossing Block**. [Instruções](docs/INSTALAR_ANDROID.md).
 
 ## Fluxo implementado
 
