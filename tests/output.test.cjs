@@ -95,3 +95,15 @@ test('falha de escrita ou arquivo de formato incompatível não é tratado como 
   await assert.rejects(api.exportOutput(profile,[row()],{kind:'file',uri:'content://1',name:'dados.xlsx'},prefs),/não confirmada/);
   await assert.rejects(api.exportOutput(profile,[row()],{kind:'file',uri:'content://1',name:'dados.csv'},prefs),/formato mudou/);
 });
+
+
+test('erro do provedor apresenta orientação clara sem confirmar exportação',async()=>{
+  const {api}=service({async writeFileAsync(){throw new Error("Call to function BCDocuments.writeFileAsync rejected: A gravação não pôde ser confirmada no destino. Os dados continuam no aparelho.");}});
+  await assert.rejects(api.exportOutput(profile,[row()],{kind:'file',uri:'content://1',name:'dados.xlsx'},prefs),error=>{
+    assert.ok(error.message.startsWith('A gravação no destino não foi confirmada.'));
+    assert.ok(error.message.includes('A coleta continua salva no aparelho.'));
+    assert.ok(error.message.includes('Enviar cópia dos dados'));
+    assert.ok(!error.message.includes('BCDocuments'));
+    return true;
+  });
+});

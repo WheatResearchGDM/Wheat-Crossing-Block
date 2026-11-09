@@ -45,6 +45,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Testar gravacao e confirmacao de documentos
+        run: |
+          mkdir -p "$RUNNER_TEMP/bc-writer-tests"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/bc-writer-tests" modules/bc-documents/android/src/main/java/expo/modules/bcdocuments/VerifiedDocumentWriter.java tests/native/VerifiedDocumentWriterTest.java
+          java -cp "$RUNNER_TEMP/bc-writer-tests" expo.modules.bcdocuments.VerifiedDocumentWriterTest
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
       - name: Verificar codigo e testes

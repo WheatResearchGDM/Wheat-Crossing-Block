@@ -3,6 +3,9 @@ package expo.modules.bcdocuments
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.system.Os
+import android.system.OsConstants
 import android.util.Base64
 import androidx.documentfile.provider.DocumentFile
 import expo.modules.kotlin.Promise
@@ -21,6 +24,26 @@ class BCDocumentsModule : Module() {
   private var pending: Promise? = null
   private var pickerKind = "folder"
   private val context get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+
+  private fun writeDocument(uri: Uri, content: ByteArray) {
+    // Some providers support only write-only streams. Negotiate mode before writing any bytes.
+    val descriptor = try { context.contentResolver.openFileDescriptor(uri, "rwt") }
+      catch (_: IOException) { null }
+      catch (_: IllegalArgumentException) { null }
+      catch (_: UnsupportedOperationException) { null }
+      ?: context.contentResolver.openFileDescriptor(uri, "wt")
+      ?: throw IOException("Não foi possível abrir o arquivo para escrita.")
+    ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
+      if (OsConstants.S_ISREG(Os.fstat(descriptor.fileDescriptor).st_mode)) {
+        // Do not rely on the provider honoring the truncate flag on an existing cached file.
+        VerifiedDocumentWriter.writeSeekable(output, content)
+      } else {
+        // Pipe-backed cloud uploads commit only after this stream is closed.
+        output.write(content)
+        output.flush()
+      }
+    }
+  }
 
   override fun definition() = ModuleDefinition {
     Name("BCDocuments")
@@ -105,10 +128,15 @@ class BCDocumentsModule : Module() {
       }
       if (file.name?.endsWith(extension, ignoreCase = true) != true) throw IOException("Escolha um arquivo $extension.")
       val bytes = Base64.decode(base64, Base64.DEFAULT)
-      (context.contentResolver.openOutputStream(file.uri, "wt") ?: throw IOException("Não foi possível abrir o arquivo para escrita.")).use { it.write(bytes); it.flush() }
-      // Provider success does not mean OneDrive has finished cloud synchronization.
-      val readback = context.contentResolver.openInputStream(file.uri)?.use { it.readBytes() }
-      if (readback == null || !readback.contentEquals(bytes)) throw IOException("O destino não confirmou o conteúdo completo. Os dados continuam no aparelho; tente exportar novamente.")
+      VerifiedDocumentWriter.replace(bytes,
+        { content ->
+          try { writeDocument(file.uri, content) }
+          catch (error: Exception) { throw IOException("Falha ao gravar o destino.", error) }
+        },
+        { context.contentResolver.openInputStream(file.uri) },
+        { milliseconds -> Thread.sleep(milliseconds) }
+      )
+      // Exact readback confirms provider content, not completion of cloud synchronization.
       mapOf("uri" to file.uri.toString(), "name" to (file.name ?: filename))
     }
   }

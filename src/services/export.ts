@@ -33,8 +33,15 @@ async function localSnapshot(profile: Profile, records: Evaluation[], preference
 export async function exportOutput(profile: Profile, records: Evaluation[], target: OutputTarget, preferences: OutputPreferences): Promise<string> {
   outputFilename(preferences, target);
   const { file, filename, mime } = await localSnapshot(profile, records, preferences, target);
-  const written = await documents().writeFileAsync(target.kind, target.uri, filename, await file.base64(), mime);
-  return written.name;
+  try {
+    const written = await documents().writeFileAsync(target.kind, target.uri, filename, await file.base64(), mime);
+    return written.name;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (detail.includes('A gravação não pôde ser confirmada'))
+      throw new Error('A gravação no destino não foi confirmada. A coleta continua salva no aparelho. Aguarde e tente novamente ou use Configurações → Enviar cópia dos dados.');
+    throw error;
+  }
 }
 export async function shareOutput(profile: Profile, records: Evaluation[], preferences: OutputPreferences): Promise<void> {
   if (!await Sharing.isAvailableAsync()) throw new Error('Compartilhamento indisponível neste aparelho.');
